@@ -40,6 +40,10 @@
   </aside>
 </div>
 
+<p class="hint">Labels describe visible head position and eye closure, not attention or emotion.
+  “Uncertain” means the available measurements do not support a reliable state.
+  An exclamation mark indicates a condition that passed its duration threshold.</p>
+
 <script>
 window.SESSION_ID = {{ session.pk }};
 window.WORKER_RUNNING = {{ worker_running|yesno:"true,false" }};
@@ -47,5 +51,5 @@ window.WORKER_RUNNING = {{ worker_running|yesno:"true,false" }};
 {% endblock %}
 {% block scripts %}
 {% load static %}
-<script src="{% static 'js/dashboard.js' %}?v=3"></script>
+<script src="{% static 'js/dashboard.js' %}?v=4"></script>
 {% endblock %}

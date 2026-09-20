@@ -7,7 +7,9 @@ _LABELS = {
     "head_down": ("head down", (60, 170, 240)),
     "high_movement": ("high movement", (60, 200, 240)),
     "face_not_visible": ("face not visible", (150, 150, 150)),
-    "possible_drowsiness": ("possible drowsiness", (70, 90, 240)),
+    "possible_drowsiness": ("prolonged eye closure", (70, 90, 240)),
+    "eyes_closed": ("eyes closed", (150, 150, 150)),
+    "uncertain": ("uncertain", (150, 150, 150)),
 }
 
 
@@ -16,7 +18,7 @@ def draw_overlay(frame, track_views):
 
     for tv in track_views:
         x1, y1, x2, y2 = (int(v) for v in tv["bbox"])
-        indicator = tv.get("indicator", "looking_forward")
+        indicator = tv.get("indicator", "uncertain")
         text, colour = _LABELS.get(indicator, ("", (200, 200, 200)))
         if tv.get("student_name"):
             name = tv["student_name"]

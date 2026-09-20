@@ -71,7 +71,9 @@
       ctx.fillText(label, x1 * sx, y1 * sy - 4);
       ctx.fillStyle = "#fff";
       ctx.fillText(
-        (t.indicator_is_event ? "! " : "") + t.indicator.replace(/_/g, " "),
+        (t.indicator_is_event ? "! " : "") +
+          (t.indicator === "possible_drowsiness" ? "prolonged eye closure" :
+            (t.indicator || "uncertain").replace(/_/g, " ")),
         x1 * sx,
         y2 * sy + 14
       );

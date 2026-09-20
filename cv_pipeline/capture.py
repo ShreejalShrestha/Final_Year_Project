@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
+import math
 
 logger = logging.getLogger("cv_pipeline")
 
@@ -19,6 +21,8 @@ class VideoStream:
 
         self._cv2 = cv2
         self.source = parse_source(source)
+        self._is_file = isinstance(self.source, str) and Path(self.source).is_file()
+        self.timestamp_seconds: float | None = None
         self.target_width = target_width
         self.cap = None
         self._open()
@@ -33,6 +37,13 @@ class VideoStream:
         ok, frame = self.cap.read()
         if not ok:
             return None
+        if self._is_file:
+            seconds = self.cap.get(self._cv2.CAP_PROP_POS_MSEC) / 1000.0
+            fps = self.cap.get(self._cv2.CAP_PROP_FPS)
+            frame_number = self.cap.get(self._cv2.CAP_PROP_POS_FRAMES)
+            if seconds <= 0 and fps > 0:
+                seconds = max(0.0, frame_number - 1) / fps
+            self.timestamp_seconds = seconds if math.isfinite(seconds) and seconds >= 0 else None
         if self.target_width and frame.shape[1] > self.target_width:
             scale = self.target_width / frame.shape[1]
             frame = self._cv2.resize(

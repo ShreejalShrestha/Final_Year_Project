@@ -58,7 +58,7 @@ class IndicatorTests(SimpleTestCase):
         opened = []
         for i in range(40):
             _, trans = engine.update(
-                1, t0 + i * 0.25, FrameSignals(face_visible=True, pitch=30.0)
+                1, t0 + i * 0.25, FrameSignals(face_visible=True, pitch=30.0, pose_valid=True, quality=0.9)
             )
             opened.extend(t for t in trans if t.kind == "open")
         self.assertTrue(opened)
@@ -66,7 +66,7 @@ class IndicatorTests(SimpleTestCase):
         engine2 = IndicatorEngine(cfg)
         for i in range(40):
             _, trans = engine2.update(
-                1, t0 + i * 0.25, FrameSignals(face_visible=True, pitch=30.0)
+                1, t0 + i * 0.25, FrameSignals(face_visible=True, pitch=30.0, pose_valid=True, quality=0.9)
             )
             if any(t.kind == "open" for t in trans):
                 first_open_frame = i

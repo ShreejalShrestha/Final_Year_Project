@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Protocol
 
 import numpy as np
@@ -36,6 +36,7 @@ class FrameResult:
     track_views: list[dict] = field(default_factory=list)
     fps: float = 0.0
     num_tracks: int = 0
+    signal_rows: list[dict] = field(default_factory=list)
 
 
 class MonitoringEngine:
@@ -70,13 +71,16 @@ class MonitoringEngine:
             except Exception as exc:  # noqa: BLE001 - degrade gracefully
                 logger.warning("Face landmarks disabled: %s", exc)
 
-        self._last_t = time.time()
+        self._last_t = time.monotonic()
         self._fps = 0.0
         self._frame_no = 0
         self._sig_cache: dict[int, object] = {}
+        self._sig_cache_time = 0.0
 
     # ------------------------------------------------------------------
-    def process(self, frame: np.ndarray) -> FrameResult:
+    def process(self, frame: np.ndarray, *, timestamp: float | None = None) -> FrameResult:
+        # Recorded clips use video time so event durations do not depend on CPU speed.
+        now = time.monotonic() if timestamp is None else timestamp
         h, w = frame.shape[:2]
         diag = float(np.hypot(w, h))
         self._frame_no += 1
@@ -97,14 +101,17 @@ class MonitoringEngine:
             try:
                 face_signals = self._landmarker.analyze(frame)
                 self._sig_cache = match_signals_to_tracks(track_boxes, face_signals)
+                self._sig_cache_time = now
             except Exception as exc:  # noqa: BLE001
                 logger.debug("landmark analyze failed: %s", exc)
+                self._sig_cache.clear()
         signals_by_track = {
-            tid: s for tid, s in self._sig_cache.items() if tid in track_boxes
+            tid: s for tid, s in self._sig_cache.items()
+            if tid in track_boxes and 0 <= now - self._sig_cache_time <= self.cfg.landmark_max_age_seconds
         }
 
-        now = time.time()
         views: list[dict] = []
+        signal_rows: list[dict] = []
         live_ids = set(track_boxes)
 
         for t in tracks:
@@ -141,17 +148,27 @@ class MonitoringEngine:
 
             # --- indicator signals ---------------------------------
             sig = signals_by_track.get(tid)
-            face_visible = sig is not None or det_idx is not None
+            # A cached landmark must not override a current failed face detection.
+            face_visible = det_idx is not None and 0 <= det_idx < len(detections)
+            if not face_visible:
+                sig = None
             fs = FrameSignals(
                 face_visible=face_visible,
-                yaw=getattr(sig, "yaw", detections[det_idx].yaw if det_idx is not None and det_idx < len(detections) else 0.0),
-                pitch=getattr(sig, "pitch", detections[det_idx].pitch if det_idx is not None and det_idx < len(detections) else 0.0),
+                yaw=getattr(sig, "yaw", 0.0),
+                pitch=getattr(sig, "pitch", 0.0),
                 blink=getattr(sig, "blink", 0.0),
                 movement_norm=movement_norm,
                 quality=t.get("score", 0.0),
+                pose_valid=getattr(sig, "pose_valid", False),
+                eye_left=getattr(sig, "eye_left", None),
+                eye_right=getattr(sig, "eye_right", None),
             )
             state, transitions = self.indicators.update(tid, now, fs)
             self._apply_transitions(tid, student_id, transitions)
+            signal_rows.append({"timestamp": now, "track_id": tid, **asdict(fs),
+                                "landmark_fresh": bool(run_lm and sig is not None),
+                                "indicator": state.current_label,
+                                "indicator_is_event": state.current_is_event})
 
             views.append(
                 {
@@ -175,15 +192,17 @@ class MonitoringEngine:
             self._seen_tracks.discard(gone)
             self._identities.pop(gone, None)
             self._centroids.pop(gone, None)
+            self._sig_cache.pop(gone, None)
 
         annotated = draw_overlay(frame.copy(), views) if self.cfg.burn_in_overlay else frame
 
-        dt = now - self._last_t
-        self._last_t = now
+        wall_now = time.monotonic()
+        dt = wall_now - self._last_t
+        self._last_t = wall_now
         if dt > 0:
             self._fps = 0.9 * self._fps + 0.1 * (1.0 / dt)
         return FrameResult(frame=annotated, track_views=views, fps=round(self._fps, 1),
-                           num_tracks=len(views))
+                           num_tracks=len(views), signal_rows=signal_rows)
 
     def _apply_transitions(self, track_id, student_id, transitions):
         for tr in transitions:

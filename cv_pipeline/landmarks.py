@@ -30,8 +30,11 @@ class FaceSignal:
     yaw: float
     pitch: float
     roll: float
-    blink: float               # 0..1, max of both eyes
+    blink: float               # 0..1, minimum of both eyes (compatibility field)
     yawn: float                # 0..1, jawOpen blendshape
+    eye_left: float | None = None
+    eye_right: float | None = None
+    pose_valid: bool = False
 
 
 def _ensure_task_file(model_dir: str) -> str:
@@ -95,17 +98,26 @@ class FaceLandmarkAnalyzer:
             bbox = np.array([min(xs), min(ys), max(xs), max(ys)], dtype=np.float32)
 
             yaw = pitch = roll = 0.0
+            pose_valid = False
             if i < len(matrices):
-                pitch, yaw, roll = _euler_from_matrix(np.asarray(matrices[i]))
+                matrix = np.asarray(matrices[i])
+                if matrix.shape == (4, 4) and np.isfinite(matrix).all():
+                    pitch, yaw, roll = _euler_from_matrix(matrix)
+                    pose_valid = True
 
             blink = yawn = 0.0
+            eye_left = eye_right = None
             if i < len(blendshapes):
                 cats = {c.category_name: c.score for c in blendshapes[i]}
-                blink = max(cats.get("eyeBlinkLeft", 0.0), cats.get("eyeBlinkRight", 0.0))
+                eye_left = cats.get("eyeBlinkLeft")
+                eye_right = cats.get("eyeBlinkRight")
+                if eye_left is not None and eye_right is not None:
+                    blink = min(eye_left, eye_right)
                 yawn = cats.get("jawOpen", 0.0)
 
             signals.append(
-                FaceSignal(bbox=bbox, yaw=yaw, pitch=pitch, roll=roll, blink=blink, yawn=yawn)
+                FaceSignal(bbox=bbox, yaw=yaw, pitch=pitch, roll=roll, blink=blink, yawn=yawn,
+                           eye_left=eye_left, eye_right=eye_right, pose_valid=pose_valid)
             )
         return signals
 

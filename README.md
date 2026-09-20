@@ -90,6 +90,10 @@ python manage.py run_pipeline --session 1 --source data/clips/lecture.mp4 --show
 
 ## Tests
 
+Indicator thresholds, neutral camera angles, and measurement export are described
+in [the calibration guide](docs/CALIBRATION.md). The live view uses an explicit
+uncertain state for insufficient measurements and reports prolonged eye closure.
+
 ```bash
 python manage.py test apps.attendance cv_pipeline
 ```

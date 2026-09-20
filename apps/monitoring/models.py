@@ -11,7 +11,8 @@ class EventType(models.TextChoices):
     HEAD_DOWN = "head_down", "Head-down posture"
     HIGH_MOVEMENT = "high_movement", "High upper-body movement"
     FACE_NOT_VISIBLE = "face_not_visible", "Face not visible"
-    POSSIBLE_DROWSINESS = "possible_drowsiness", "Possible drowsiness (eyes closed)"
+    # Preserve the stored key for existing records and integrations.
+    POSSIBLE_DROWSINESS = "possible_drowsiness", "Prolonged eye closure"
 
 
 class MonitoringEvent(models.Model):

@@ -1,4 +1,7 @@
 from dataclasses import dataclass, field
+import json
+import math
+from pathlib import Path
 
 
 @dataclass
@@ -44,6 +47,20 @@ class PipelineConfig:
 
     event_cooldown_seconds: float = 4.0      # gap before the same event re-opens
 
+    # Calibrate against consented recordings; these are initial defaults.
+    neutral_yaw_deg: float = 0.0
+    neutral_pitch_deg: float = 0.0
+    pitch_direction: float = 1.0            # set -1 if a verified downward nod is negative
+    looking_away_exit_deg: float = 23.0
+    head_down_exit_deg: float = 15.0
+    eye_closed_exit_score: float = 0.40
+    forward_yaw_deg: float = 15.0
+    forward_pitch_deg: float = 12.0
+    indicator_min_quality: float = 0.60     # detector score, not state confidence
+    condition_release_seconds: float = 0.35
+    landmark_max_age_seconds: float = 0.50
+    indicator_max_gap_seconds: float = 1.0
+
     # --- Assumed capture rate for duration maths when timestamps absent --
     assumed_fps: float = 15.0
 
@@ -63,3 +80,49 @@ class PipelineConfig:
             "high_movement",
         ]
     )
+
+    def __post_init__(self):
+        for name in CALIBRATION_FIELDS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} must be a finite number")
+            if name not in {"neutral_yaw_deg", "neutral_pitch_deg", "pitch_direction"} and value < 0:
+                raise ValueError(f"{name} must be nonnegative")
+        if self.pitch_direction not in (-1, 1):
+            raise ValueError("pitch_direction must be 1 or -1")
+        for low, high in (("looking_away_exit_deg", "looking_away_yaw_deg"),
+                          ("head_down_exit_deg", "head_down_pitch_deg"),
+                          ("eye_closed_exit_score", "eye_closed_blink_score")):
+            if getattr(self, low) >= getattr(self, high):
+                raise ValueError(f"{low} must be below {high}")
+        for name in ("eye_closed_blink_score", "eye_closed_exit_score", "indicator_min_quality"):
+            if getattr(self, name) > 1:
+                raise ValueError(f"{name} must be between 0 and 1")
+        if self.forward_yaw_deg >= self.looking_away_yaw_deg or self.forward_pitch_deg >= self.head_down_pitch_deg:
+            raise ValueError("Forward limits must be below away/down entry thresholds")
+        if self.landmark_max_age_seconds <= 0 or self.indicator_max_gap_seconds <= 0:
+            raise ValueError("Freshness and observation gap limits must be positive")
+
+
+CALIBRATION_FIELDS = {
+    "neutral_yaw_deg", "neutral_pitch_deg", "pitch_direction",
+    "looking_away_yaw_deg", "looking_away_exit_deg", "looking_away_min_seconds",
+    "head_down_pitch_deg", "head_down_exit_deg", "head_down_min_seconds",
+    "eye_closed_blink_score", "eye_closed_exit_score", "drowsiness_min_seconds",
+    "forward_yaw_deg", "forward_pitch_deg", "indicator_min_quality",
+    "condition_release_seconds", "landmark_max_age_seconds", "indicator_max_gap_seconds",
+    "face_not_visible_min_seconds", "high_movement_norm", "high_movement_min_seconds",
+    "event_cooldown_seconds",
+}
+
+
+def load_calibration(path: str) -> dict:
+    """Read numeric indicator overrides; reject typos instead of silently ignoring them."""
+    values = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(values, dict):
+        raise ValueError("Calibration must be a JSON object")
+    unknown = values.keys() - CALIBRATION_FIELDS
+    if unknown:
+        raise ValueError(f"Unknown calibration fields: {', '.join(sorted(unknown))}")
+    PipelineConfig(**values)
+    return values

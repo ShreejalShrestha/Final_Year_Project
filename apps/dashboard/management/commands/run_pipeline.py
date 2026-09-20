@@ -4,6 +4,7 @@ Useful for testing against a recorded classroom video:
     python manage.py run_pipeline --session 1 --source data/clips/lecture.mp4 --show
 """
 import time
+import csv
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -18,6 +19,7 @@ class Command(BaseCommand):
         parser.add_argument("--source", default=None)
         parser.add_argument("--show", action="store_true", help="Preview window (needs a display).")
         parser.add_argument("--max-seconds", type=float, default=0.0)
+        parser.add_argument("--signals-csv", help="Export measurements for manual labeling/calibration (new file).")
 
     def handle(self, *args, **opts):
         import cv2
@@ -32,7 +34,10 @@ class Command(BaseCommand):
         except ClassSession.DoesNotExist:
             raise CommandError(f"No session with id {opts['session']}")
 
-        cfg = _make_config()
+        try:
+            cfg = _make_config()
+        except (OSError, ValueError) as exc:
+            raise CommandError(f"Invalid calibration configuration: {exc}") from exc
         gallery, names = build_gallery(cfg)
         self.stdout.write(f"Gallery: {len(gallery)} templates across {len(names)} students")
 
@@ -45,12 +50,29 @@ class Command(BaseCommand):
         source = opts["source"] or session.video_source or settings.CV_PIPELINE["VIDEO_SOURCE"]
         stream = VideoStream(source, target_width=cfg.capture_width)
         start = time.time()
+        export_file = None
+        writer = None
+        export_start = None
         try:
+            if opts["signals_csv"]:
+                export_file = open(opts["signals_csv"], "x", newline="", encoding="utf-8")
             while True:
                 frame = stream.read()
                 if frame is None:
                     break
-                result = engine.process(frame)
+                result = engine.process(frame, timestamp=stream.timestamp_seconds)
+                if export_file:
+                    for row in result.signal_rows:
+                        if export_start is None:
+                            export_start = row["timestamp"]
+                        row = {"session_id": session.pk, **row,
+                               "elapsed_seconds": row["timestamp"] - export_start,
+                               "video_seconds": stream.timestamp_seconds,
+                               "label": ""}
+                        if writer is None:
+                            writer = csv.DictWriter(export_file, fieldnames=list(row))
+                            writer.writeheader()
+                        writer.writerow(row)
                 self.stdout.write(
                     f"\rfps={result.fps:5.1f} tracks={result.num_tracks} "
                     + " ".join(
@@ -68,6 +90,8 @@ class Command(BaseCommand):
         except KeyboardInterrupt:
             pass
         finally:
+            if export_file:
+                export_file.close()
             engine.shutdown()
             stream.release()
             if opts["show"]:

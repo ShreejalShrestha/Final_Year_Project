@@ -158,6 +158,8 @@ CV_PIPELINE = {
     "PROCESS_EVERY_N": os.getenv("CV_PROCESS_EVERY_N", ""),  # "" = config default
     "RECOGNITION_THRESHOLD": float(os.getenv("CV_RECOGNITION_THRESHOLD", "0.35")),
     "MODEL_DIR": str(BASE_DIR / os.getenv("CV_MODEL_DIR", "cv_pipeline/models")),
+    "CALIBRATION_FILE": (str(BASE_DIR / os.environ["CV_CALIBRATION_FILE"])
+                         if os.getenv("CV_CALIBRATION_FILE") else ""),
 }
 
 LOGGING = {

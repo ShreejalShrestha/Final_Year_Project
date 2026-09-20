@@ -1,0 +1,20 @@
+{
+  "neutral_yaw_deg": 0.0,
+  "neutral_pitch_deg": 0.0,
+  "pitch_direction": 1.0,
+  "looking_away_yaw_deg": 28.0,
+  "looking_away_exit_deg": 23.0,
+  "looking_away_min_seconds": 3.0,
+  "head_down_pitch_deg": 20.0,
+  "head_down_exit_deg": 15.0,
+  "head_down_min_seconds": 3.0,
+  "eye_closed_blink_score": 0.55,
+  "eye_closed_exit_score": 0.4,
+  "drowsiness_min_seconds": 2.5,
+  "forward_yaw_deg": 15.0,
+  "forward_pitch_deg": 12.0,
+  "indicator_min_quality": 0.6,
+  "condition_release_seconds": 0.35,
+  "landmark_max_age_seconds": 0.5,
+  "indicator_max_gap_seconds": 1.0
+}

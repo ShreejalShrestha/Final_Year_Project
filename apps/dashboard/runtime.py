@@ -15,7 +15,7 @@ from django.conf import settings
 from django.db import close_old_connections
 
 from cv_pipeline.capture import VideoStream
-from cv_pipeline.config import PipelineConfig
+from cv_pipeline.config import PipelineConfig, load_calibration
 from cv_pipeline.engine import MonitoringEngine
 
 logger = logging.getLogger("apps.dashboard")
@@ -34,6 +34,8 @@ def _make_config() -> PipelineConfig:
         kwargs["insightface_name"] = conf["MODEL_NAME"]
     if conf.get("PROCESS_EVERY_N"):
         kwargs["process_every_n_frames"] = int(conf["PROCESS_EVERY_N"])
+    if conf.get("CALIBRATION_FILE"):
+        kwargs.update(load_calibration(conf["CALIBRATION_FILE"]))
     return PipelineConfig(**kwargs)
 
 
@@ -123,8 +125,8 @@ class PipelineWorker:
 
         from .gallery import build_gallery
 
-        cfg = _make_config()
         try:
+            cfg = _make_config()
             close_old_connections()
             session = ClassSession.objects.get(pk=self.session_id)
             gallery, names = build_gallery(cfg)
@@ -157,7 +159,7 @@ class PipelineWorker:
                     continue
 
                 try:
-                    result = engine.process(frame)
+                    result = engine.process(frame, timestamp=stream.timestamp_seconds)
                 except Exception:  # noqa: BLE001
                     logger.exception("frame processing error")
                     continue
