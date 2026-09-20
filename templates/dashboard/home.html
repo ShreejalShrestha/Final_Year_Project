@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Sessions</h1>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2>Open &amp; scheduled</h2>
+    <a class="btn" href="{% url 'classes:session_create' %}">New session</a>
+  </div>
+  <table>
+    <thead><tr><th>Class</th><th>Date</th><th>Status</th><th>Teacher</th><th></th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td>{{ s.course_class.name }}</td>
+        <td>{{ s.date }}</td>
+        <td><span class="pill {% if s.is_active %}ok{% endif %}">{{ s.get_status_display }}</span></td>
+        <td>{{ s.teacher.username|default:"—" }}</td>
+        <td><a href="{% url 'dashboard:live' s.pk %}">Open live view →</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="hint">No open sessions. Create one to begin.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Recently closed</h2>
+  <table>
+    <thead><tr><th>Class</th><th>Date</th><th>Attendance</th><th>Events</th></tr></thead>
+    <tbody>
+      {% for s in recent %}
+      <tr>
+        <td>{{ s.course_class.name }}</td>
+        <td>{{ s.date }}</td>
+        <td><a href="{% url 'attendance:session' s.pk %}">{{ s.attendance_records.count }} present</a></td>
+        <td>{{ s.monitoring_events.count }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="hint">Nothing yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

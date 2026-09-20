@@ -1,0 +1,43 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Smart Classroom Monitoring{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=3">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{% url 'dashboard:home' %}">Smart Classroom</a>
+  {% if user.is_authenticated %}
+  <nav>
+    <a href="{% url 'dashboard:home' %}">Dashboard</a>
+    <a href="{% url 'students:list' %}">Students</a>
+    <a href="{% url 'classes:list' %}">Classes</a>
+    <a href="{% url 'admin:index' %}">Admin</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="who">{{ user.username }} · {{ user.profile.get_role_display }}</span>
+  <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
+    <button class="link">Sign out</button>
+  </form>
+  {% endif %}
+</header>
+
+<main class="container">
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}<li class="msg {{ message.tags }}">{{ message }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <p>Observable indicators only — not emotion, engagement, or misconduct judgements.
+  Human review is required for every decision.</p>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

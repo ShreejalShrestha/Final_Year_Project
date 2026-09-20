@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Enrol {{ student.full_name }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px">
+  <h1>Add face photos — {{ student.full_name }}</h1>
+  <p class="hint">Upload several clear photos with modest pose and lighting
+  variation. Each usable photo becomes one ArcFace template. Uploading photos
+  records the student's consent.</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn" type="submit">Upload &amp; generate templates</button>
+  </form>
+</div>
+{% endblock %}

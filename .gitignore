@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+.env
+db.sqlite3
+*.log
+
+media/
+staticfiles/
+
+# Downloaded model weights (fetched on first run)
+cv_pipeline/models/*.task
+cv_pipeline/models/*.onnx
+~/.insightface/
+
+.DS_Store
+.idea/
+.vscode/

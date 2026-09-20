@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Attendance · {{ session.course_class.name }}{% endblock %}
+{% block content %}
+<h1>Attendance — {{ session.course_class.name }} ({{ session.date }})</h1>
+<p><a href="{% url 'dashboard:live' session.pk %}">← back to live view</a></p>
+
+<div class="card">
+  <h2>Marked ({{ records|length }})</h2>
+  <table>
+    <thead><tr><th>Student</th><th>Status</th><th>Source</th><th>Time</th><th>Confidence</th><th>Correct</th></tr></thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.student.full_name }} <span class="hint">{{ r.student.student_id }}</span></td>
+        <td><span class="pill {% if r.status == 'present' %}ok{% endif %}">{{ r.get_status_display }}</span></td>
+        <td>{{ r.get_source_display }}{% if r.corrected %} <span class="hint">(corrected)</span>{% endif %}</td>
+        <td>{{ r.marked_at|time:"H:i:s" }}</td>
+        <td>{{ r.recognition_confidence|floatformat:3|default:"—" }}</td>
+        <td>
+          <form method="post" action="{% url 'attendance:correct' session.pk %}" style="display:flex;gap:4px">
+            {% csrf_token %}
+            <input type="hidden" name="student_id" value="{{ r.student.pk }}">
+            <select name="status">
+              <option value="present" {% if r.status == 'present' %}selected{% endif %}>present</option>
+              <option value="absent" {% if r.status == 'absent' %}selected{% endif %}>absent</option>
+              <option value="excused" {% if r.status == 'excused' %}selected{% endif %}>excused</option>
+            </select>
+            <button class="link">save</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="hint">No attendance recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Not marked — add manually</h2>
+  <table>
+    <thead><tr><th>Student</th><th></th></tr></thead>
+    <tbody>
+      {% for s in unmarked %}
+      <tr>
+        <td>{{ s.full_name }} <span class="hint">{{ s.student_id }}</span></td>
+        <td>
+          <form method="post" action="{% url 'attendance:correct' session.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="student_id" value="{{ s.pk }}">
+            <input type="hidden" name="status" value="present">
+            <input type="hidden" name="note" value="Manual add">
+            <button class="link">mark present</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="2" class="hint">Everyone active is marked.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

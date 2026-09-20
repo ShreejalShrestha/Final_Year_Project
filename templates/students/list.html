@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Students{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center">
+  <h1>Students</h1>
+  <a class="btn" href="{% url 'students:create' %}">Enrol new student</a>
+</div>
+<div class="card">
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Program</th><th>Sem/Section</th><th>Consent</th><th>Templates</th></tr></thead>
+    <tbody>
+      {% for s in students %}
+      <tr>
+        <td><a href="{% url 'students:detail' s.pk %}">{{ s.student_id }}</a></td>
+        <td>{{ s.full_name }}</td>
+        <td>{{ s.program }}</td>
+        <td>{{ s.semester_section }}</td>
+        <td>{% if s.consent_given %}<span class="pill ok">yes</span>{% else %}<span class="pill warn">no</span>{% endif %}</td>
+        <td>{% if s.is_enrolled %}<span class="pill ok">{{ s.embedding_count }}</span>{% else %}<span class="pill warn">{{ s.embedding_count }}</span>{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="hint">No students enrolled yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

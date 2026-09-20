@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Live · {{ session.course_class.name }}{% endblock %}
+{% block content %}
+<h1>{{ session.course_class.name }} — {{ session.date }}</h1>
+
+<div class="statusline">
+  <span>Status: <span class="pill {% if session.is_active %}ok{% endif %}">{{ session.get_status_display }}</span></span>
+  <span id="fps">fps: —</span>
+  <span id="pipeline-state">pipeline: stopped</span>
+  <span id="pipeline-error" style="color:#c0392b"></span>
+</div>
+
+<div style="margin-bottom:14px;display:flex;gap:8px">
+  {% if not session.is_active %}
+  <form method="post" action="{% url 'classes:session_activate' session.pk %}">{% csrf_token %}
+    <button class="btn">Activate session (record attendance)</button>
+  </form>
+  {% else %}
+  <form method="post" action="{% url 'classes:session_close' session.pk %}">{% csrf_token %}
+    <button class="btn danger">Close session</button>
+  </form>
+  {% endif %}
+  <button class="btn" id="btn-start">Start camera</button>
+  <button class="btn secondary" id="btn-stop">Stop camera</button>
+  <a class="btn secondary" href="{% url 'attendance:session' session.pk %}">Attendance sheet</a>
+</div>
+
+<div class="live-grid">
+  <div class="stage" id="stage" style="align-self:start">
+    {# Inline styles on purpose: this wrapper hugs the video so the overlay canvas can never be stretched by the grid row. #}
+    <div style="position:relative;line-height:0">
+      <img id="feed" alt="live feed" src="" style="display:block;width:100%;height:auto">
+      <canvas id="overlay" style="position:absolute;left:0;top:0"></canvas>
+    </div>
+  </div>
+  <aside class="sidepanel" id="panel">
+    <p class="hint">Click a recognised student in the video to view approved
+    information. Unknown / low-confidence tracks are not clickable.</p>
+    <div id="panel-body"></div>
+  </aside>
+</div>
+
+<script>
+window.SESSION_ID = {{ session.pk }};
+window.WORKER_RUNNING = {{ worker_running|yesno:"true,false" }};
+</script>
+{% endblock %}
+{% block scripts %}
+{% load static %}
+<script src="{% static 'js/dashboard.js' %}?v=3"></script>
+{% endblock %}

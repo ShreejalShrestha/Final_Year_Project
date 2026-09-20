@@ -1,0 +1,17 @@
+# NVIDIA GPU acceleration for the CV pipeline (verified on an RTX 4060, Win 11,
+# Python 3.13). Install AFTER requirements.txt, and FIRST remove the CPU build:
+#   pip uninstall -y onnxruntime
+#   pip install -r requirements-gpu.txt
+# Then set in .env:  CV_DEVICE=cuda  CV_MODEL_NAME=buffalo_l  CV_PROCESS_EVERY_N=1
+#
+# cv_pipeline/detection.py calls onnxruntime.preload_dlls() and adds the wheel
+# bin/ dirs to PATH so cuDNN 9 finds its sub-libraries. No system CUDA toolkit
+# needed.
+
+onnxruntime-gpu==1.22.0        # CUDA 12.x / cuDNN 9.x build (has cp313 wheels)
+nvidia-cudnn-cu12>=9.5,<10
+nvidia-cublas-cu12
+nvidia-cuda-nvrtc-cu12
+nvidia-cuda-runtime-cu12
+nvidia-cufft-cu12
+nvidia-curand-cu12

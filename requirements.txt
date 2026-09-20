@@ -1,0 +1,13 @@
+# Core web application
+Django>=5.0,<5.2
+psycopg[binary]>=3.1        # PostgreSQL driver (set DB_ENGINE=mysql and install mysqlclient to use MySQL instead)
+Pillow>=10.2
+numpy>=1.26
+python-dotenv>=1.0.1
+
+# Computer-vision runtime (see docs/SETUP.md for platform notes)
+opencv-python>=4.9.0.80
+onnxruntime>=1.18.0          # CPU. For NVIDIA: see docs/SETUP.md (onnxruntime-gpu==1.22 + nvidia-*-cu12)
+insightface>=0.7.3           # ArcFace embeddings + SCRFD detection (buffalo_l)
+mediapipe>=0.10.20           # Face Landmarker + Pose Landmarker
+scipy>=1.11                  # Hungarian assignment for the tracker
