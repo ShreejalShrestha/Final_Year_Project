@@ -24,6 +24,19 @@ classroom. Validate with manually labeled recordings before relying on events.
 - Cached landmarks expire and are cleared on analysis failure. Current face
   detection loss cannot be hidden by a cached landmark. Detector score is a
   quality gate, not a calibrated probability of the displayed state.
+- `head_up` mirrors `head_down`: the same signed pitch past a threshold in the
+  opposite direction (chin raised). It has its own entry/exit thresholds
+  (`head_up_pitch_deg`, `head_up_exit_deg`) and duration (`head_up_min_seconds`).
+- Movement is split into two mutually exclusive conditions: **high movement**
+  (`high_movement_norm` or more, sustained) and **restless movement**
+  (`restless_movement_norm` up to, but below, `high_movement_norm`, recurring
+  at least `restless_min_bursts` times inside `restless_window_seconds`). A
+  single big sustained shift is never also counted as restlessness.
+- **Prolonged absence** (`left_seat`) uses the same "no face detected" signal
+  as `face_not_visible` but held for much longer (`left_seat_min_seconds`,
+  default 20s vs. 3s). It only takes over the displayed label once it has
+  actually become an event, so a brief look-away still reads as
+  `face_not_visible` first.
 - Local video files use media timestamps for rule durations; live streams use a
   monotonic clock. Database event start/end timestamps still record processing
   wall time. Use CSV media timestamps for offline duration evaluation.

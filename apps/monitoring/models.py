@@ -9,8 +9,11 @@ class EventType(models.TextChoices):
 
     LOOKING_AWAY = "looking_away", "Looking away (prolonged)"
     HEAD_DOWN = "head_down", "Head-down posture"
+    HEAD_UP = "head_up", "Head-up posture (chin raised)"
     HIGH_MOVEMENT = "high_movement", "High upper-body movement"
+    RESTLESS_MOVEMENT = "restless_movement", "Restless / frequent repositioning"
     FACE_NOT_VISIBLE = "face_not_visible", "Face not visible"
+    LEFT_SEAT = "left_seat", "Prolonged absence (possibly left seat)"
     # Preserve the stored key for existing records and integrations.
     POSSIBLE_DROWSINESS = "possible_drowsiness", "Prolonged eye closure"
 

@@ -13,8 +13,11 @@ from .config import PipelineConfig
 # Event type keys (must match apps.monitoring.models.EventType values).
 LOOKING_AWAY = "looking_away"
 HEAD_DOWN = "head_down"
+HEAD_UP = "head_up"
 HIGH_MOVEMENT = "high_movement"
+RESTLESS_MOVEMENT = "restless_movement"
 FACE_NOT_VISIBLE = "face_not_visible"
+LEFT_SEAT = "left_seat"
 POSSIBLE_DROWSINESS = "possible_drowsiness"
 
 LOOKING_FORWARD = "looking_forward"       # display-only, never persisted
@@ -58,6 +61,9 @@ class TrackIndicatorState:
     current_is_event: bool = False
     conditions: dict[str, _CondState] = field(default_factory=dict)
     last_update: float | None = None
+    # Timestamps of recent small-movement "bursts", for the restless/fidgeting
+    # indicator (kept trimmed to the rolling window each update).
+    movement_burst_times: list[float] = field(default_factory=list)
 
 
 class IndicatorEngine:
@@ -66,14 +72,19 @@ class IndicatorEngine:
         self._tracks: dict[int, TrackIndicatorState] = {}
         self._rules = {
             FACE_NOT_VISIBLE: (self._is_face_not_visible, cfg.face_not_visible_min_seconds),
+            LEFT_SEAT: (self._is_face_not_visible, cfg.left_seat_min_seconds),
             POSSIBLE_DROWSINESS: (self._is_drowsy, cfg.drowsiness_min_seconds),
             HEAD_DOWN: (self._is_head_down, cfg.head_down_min_seconds),
+            HEAD_UP: (self._is_head_up, cfg.head_up_min_seconds),
             LOOKING_AWAY: (self._is_looking_away, cfg.looking_away_min_seconds),
             HIGH_MOVEMENT: (self._is_high_movement, cfg.high_movement_min_seconds),
+            RESTLESS_MOVEMENT: (self._is_restless_movement, cfg.restless_movement_min_seconds),
         }
 
     # --- instantaneous condition tests ---------------------------------
-    def _is_face_not_visible(self, s: FrameSignals, active=False) -> bool:
+    # Every test takes (signals, active, state) so a condition can look at a
+    # track's own short history (e.g. restless movement); most only need `signals`.
+    def _is_face_not_visible(self, s: FrameSignals, active=False, state=None) -> bool:
         return not s.face_visible
 
     def _eyes_valid(self, s):
@@ -85,28 +96,46 @@ class IndicatorEngine:
         return (s.face_visible and s.pose_valid and s.quality >= self.cfg.indicator_min_quality
                 and math.isfinite(s.yaw) and math.isfinite(s.pitch))
 
-    def _is_drowsy(self, s: FrameSignals, active=False) -> bool | None:
+    def _is_drowsy(self, s: FrameSignals, active=False, state=None) -> bool | None:
         if not self._eyes_valid(s):
             return None
         threshold = self.cfg.eye_closed_exit_score if active else self.cfg.eye_closed_blink_score
         return min(s.eye_left, s.eye_right) >= threshold
 
-    def _is_head_down(self, s: FrameSignals, active=False) -> bool | None:
+    def _is_head_down(self, s: FrameSignals, active=False, state=None) -> bool | None:
         if not self._pose_valid(s):
             return None
         threshold = self.cfg.head_down_exit_deg if active else self.cfg.head_down_pitch_deg
         return self.cfg.pitch_direction * (s.pitch - self.cfg.neutral_pitch_deg) >= threshold
 
-    def _is_looking_away(self, s: FrameSignals, active=False) -> bool | None:
+    def _is_head_up(self, s: FrameSignals, active=False, state=None) -> bool | None:
+        # Mirror of _is_head_down: the same signed pitch, past the threshold
+        # in the opposite direction (chin raised / looking up).
+        if not self._pose_valid(s):
+            return None
+        threshold = self.cfg.head_up_exit_deg if active else self.cfg.head_up_pitch_deg
+        return self.cfg.pitch_direction * (s.pitch - self.cfg.neutral_pitch_deg) <= -threshold
+
+    def _is_looking_away(self, s: FrameSignals, active=False, state=None) -> bool | None:
         if not self._pose_valid(s):
             return None
         threshold = self.cfg.looking_away_exit_deg if active else self.cfg.looking_away_yaw_deg
         return abs(s.yaw - self.cfg.neutral_yaw_deg) >= threshold
 
-    def _is_high_movement(self, s: FrameSignals, active=False) -> bool | None:
+    def _is_high_movement(self, s: FrameSignals, active=False, state=None) -> bool | None:
         if not s.face_visible or not math.isfinite(s.movement_norm) or s.quality < self.cfg.indicator_min_quality:
             return None
         return s.movement_norm >= self.cfg.high_movement_norm
+
+    def _is_restless_movement(self, s: FrameSignals, active=False, state=None) -> bool | None:
+        # Distinct from high_movement: many small repositionings in a short
+        # window rather than one large sustained shift. The burst history is
+        # maintained per-frame in update() before the rules loop runs.
+        if not s.face_visible or not math.isfinite(s.movement_norm) or s.quality < self.cfg.indicator_min_quality:
+            return None
+        if state is None:
+            return None
+        return len(state.movement_burst_times) >= self.cfg.restless_min_bursts
 
     # --- per-frame update --------------------------------------------
     def update(self, track_id: int, now: float, signals: FrameSignals):
@@ -117,6 +146,23 @@ class IndicatorEngine:
         interrupted = dt < 0 or dt > self.cfg.indicator_max_gap_seconds
         state.last_update = now
 
+        # Maintain the restless-movement burst history: record a burst when
+        # movement is in the "small but noticeable" band (at least the restless
+        # threshold, but below high_movement's threshold, so one big sustained
+        # shift is never also counted as restlessness), then drop anything that
+        # has aged out of the rolling window.
+        if interrupted:
+            state.movement_burst_times = []
+        elif (
+            signals.face_visible
+            and math.isfinite(signals.movement_norm)
+            and signals.quality >= self.cfg.indicator_min_quality
+            and self.cfg.restless_movement_norm <= signals.movement_norm < self.cfg.high_movement_norm
+        ):
+            state.movement_burst_times.append(now)
+        cutoff = now - self.cfg.restless_window_seconds
+        state.movement_burst_times = [t for t in state.movement_burst_times if t >= cutoff]
+
         for cond, (test, min_seconds) in self._rules.items():
             cs = state.conditions.setdefault(cond, _CondState())
             if interrupted:
@@ -124,7 +170,7 @@ class IndicatorEngine:
             # Expire a grace period even when the next observation is positive.
             if cs.release_since is not None and now - cs.release_since >= self.cfg.condition_release_seconds:
                 self._reset(cs, cond, now, transitions)
-            holds = test(signals, cs.active_since is not None)
+            holds = test(signals, cs.active_since is not None, state)
             if holds is True:
                 active_now.append(cond)
                 if cs.active_since is None:
@@ -158,6 +204,13 @@ class IndicatorEngine:
         label, is_event = (LOOKING_FORWARD if forward else UNCERTAIN), False
         for cond in self.cfg.indicator_priority:
             if cond in active_now:
+                # left_seat shares face_not_visible's instantaneous test, so it
+                # is "active" from the same first frame; only let it take over
+                # the label once it has actually graduated to its own event
+                # (i.e. absence has gone on long enough), otherwise it would
+                # pre-empt "face not visible" before that's even established.
+                if cond == LEFT_SEAT and not state.conditions[cond].event_open:
+                    continue
                 label = cond
                 is_event = state.conditions[cond].event_open
                 if cond == POSSIBLE_DROWSINESS and not is_event:

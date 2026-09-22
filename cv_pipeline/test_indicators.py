@@ -32,12 +32,18 @@ class RobustIndicatorTests(SimpleTestCase):
 
     def test_missing_low_quality_and_nonfinite_pose_never_mean_forward(self):
         for measurement in (FrameSignals(True), signal(pose_valid=False), signal(quality=0.2),
-                            signal(yaw=float("nan")), signal(eye_left=None), signal(pitch=-40)):
+                            signal(yaw=float("nan")), signal(eye_left=None)):
             with self.subTest(measurement=measurement):
                 state, _ = self.engine.update(1, 0, measurement)
                 self.assertEqual(state.current_label, "uncertain")
         state, _ = self.engine.update(2, 0, signal())
         self.assertEqual(state.current_label, "looking_forward")
+
+    def test_extreme_pitch_reads_as_head_up_not_uncertain(self):
+        # An extreme-but-valid pose measurement should map to a real
+        # condition (head_up) rather than silently falling through.
+        state, _ = self.engine.update(1, 0, signal(pitch=-40))
+        self.assertEqual(state.current_label, "head_up")
 
     def test_wink_and_normal_blink_do_not_open_eye_closure_event(self):
         _, changes = self.feed(signal(eye_left=0.9))
@@ -104,6 +110,11 @@ class RobustIndicatorTests(SimpleTestCase):
         self.assertEqual(state.current_label, "head_down")
         self.assertEqual([c.condition for c in changes], ["head_down"])
 
+    def test_head_up_is_the_mirror_of_head_down(self):
+        state, changes = self.feed(signal(pitch=-25))
+        self.assertEqual(state.current_label, "head_up")
+        self.assertEqual([c.condition for c in changes], ["head_up"])
+
     def test_track_removal_closes_event(self):
         self.feed(signal(pitch=30))
         self.assertEqual([c.kind for c in self.engine.drop_track(1)], ["close"])
@@ -113,6 +124,36 @@ class RobustIndicatorTests(SimpleTestCase):
         state, changes = self.feed(signal(face_visible=False))
         self.assertEqual(state.current_label, "face_not_visible")
         self.assertEqual([c.condition for c in changes], ["face_not_visible"])
+
+    def test_prolonged_absence_opens_left_seat_after_face_not_visible(self):
+        # face_not_visible (3s) opens first; left_seat needs the same signal
+        # held for much longer (default 20s) before it also opens.
+        state, changes = self.feed(signal(face_visible=False), count=210)
+        self.assertEqual(state.current_label, "left_seat")
+        self.assertEqual(
+            [c.condition for c in changes], ["face_not_visible", "left_seat"]
+        )
+
+    def test_restless_movement_needs_frequent_small_shifts_not_one_big_one(self):
+        # Below the high_movement threshold (0.06) but above the restless
+        # burst threshold (0.02) on every frame -> counts as repeated bursts.
+        state, changes = self.feed(signal(movement_norm=0.03))
+        self.assertEqual(state.current_label, "restless_movement")
+        self.assertEqual([c.condition for c in changes], ["restless_movement"])
+
+    def test_single_sustained_shift_is_high_movement_not_restless(self):
+        state, changes = self.feed(signal(movement_norm=0.08))
+        self.assertEqual(state.current_label, "high_movement")
+        self.assertEqual([c.condition for c in changes], ["high_movement"])
+
+    def test_small_isolated_shifts_do_not_count_as_restless(self):
+        # A lone burst roughly every 2.5s never reaches 4 bursts inside the
+        # 6s rolling window, so it should never read as restless movement.
+        state = None
+        for i in range(160):
+            measurement = signal(movement_norm=0.03 if i % 25 == 0 else 0.0)
+            state, _ = self.engine.update(1, i * 0.1, measurement)
+        self.assertNotEqual(state.current_label, "restless_movement")
 
     def test_open_event_closes_after_missing_measurements(self):
         self.feed(signal(pitch=30))

@@ -37,13 +37,27 @@ class PipelineConfig:
     head_down_pitch_deg: float = 20.0
     head_down_min_seconds: float = 3.0
 
+    head_up_pitch_deg: float = 20.0          # chin raised / looking up, opposite of head_down
+    head_up_min_seconds: float = 3.0
+
     eye_closed_blink_score: float = 0.55     # MediaPipe eyeBlink blendshape
     drowsiness_min_seconds: float = 2.5
 
     high_movement_norm: float = 0.06         # centroid displacement / frame diag
     high_movement_min_seconds: float = 2.0
 
+    # Restless/fidgeting: many small repositionings in a short window, as
+    # opposed to one big sustained shift (which high_movement covers).
+    restless_movement_norm: float = 0.02     # centroid displacement counted as one "burst"
+    restless_window_seconds: float = 6.0     # rolling window to count bursts in
+    restless_min_bursts: int = 4             # bursts within the window to hold the condition
+    restless_movement_min_seconds: float = 2.0
+
     face_not_visible_min_seconds: float = 3.0
+    # Left seat / prolonged absence: the same "no face" signal as
+    # face_not_visible, held for much longer before it is reported — a
+    # stronger claim than a brief look-away or occlusion.
+    left_seat_min_seconds: float = 20.0
 
     event_cooldown_seconds: float = 4.0      # gap before the same event re-opens
 
@@ -53,6 +67,7 @@ class PipelineConfig:
     pitch_direction: float = 1.0            # set -1 if a verified downward nod is negative
     looking_away_exit_deg: float = 23.0
     head_down_exit_deg: float = 15.0
+    head_up_exit_deg: float = 15.0
     eye_closed_exit_score: float = 0.40
     forward_yaw_deg: float = 15.0
     forward_pitch_deg: float = 12.0
@@ -73,11 +88,14 @@ class PipelineConfig:
 
     indicator_priority: list[str] = field(
         default_factory=lambda: [
+            "left_seat",
             "face_not_visible",
             "possible_drowsiness",
             "head_down",
+            "head_up",
             "looking_away",
             "high_movement",
+            "restless_movement",
         ]
     )
 
@@ -92,26 +110,38 @@ class PipelineConfig:
             raise ValueError("pitch_direction must be 1 or -1")
         for low, high in (("looking_away_exit_deg", "looking_away_yaw_deg"),
                           ("head_down_exit_deg", "head_down_pitch_deg"),
+                          ("head_up_exit_deg", "head_up_pitch_deg"),
                           ("eye_closed_exit_score", "eye_closed_blink_score")):
             if getattr(self, low) >= getattr(self, high):
                 raise ValueError(f"{low} must be below {high}")
         for name in ("eye_closed_blink_score", "eye_closed_exit_score", "indicator_min_quality"):
             if getattr(self, name) > 1:
                 raise ValueError(f"{name} must be between 0 and 1")
-        if self.forward_yaw_deg >= self.looking_away_yaw_deg or self.forward_pitch_deg >= self.head_down_pitch_deg:
-            raise ValueError("Forward limits must be below away/down entry thresholds")
+        if (self.forward_yaw_deg >= self.looking_away_yaw_deg
+                or self.forward_pitch_deg >= self.head_down_pitch_deg
+                or self.forward_pitch_deg >= self.head_up_pitch_deg):
+            raise ValueError("Forward limits must be below away/down/up entry thresholds")
         if self.landmark_max_age_seconds <= 0 or self.indicator_max_gap_seconds <= 0:
             raise ValueError("Freshness and observation gap limits must be positive")
+        if self.restless_movement_norm >= self.high_movement_norm:
+            raise ValueError("restless_movement_norm must be below high_movement_norm")
+        if self.restless_min_bursts < 1:
+            raise ValueError("restless_min_bursts must be at least 1")
+        if self.left_seat_min_seconds <= self.face_not_visible_min_seconds:
+            raise ValueError("left_seat_min_seconds must be above face_not_visible_min_seconds")
 
 
 CALIBRATION_FIELDS = {
     "neutral_yaw_deg", "neutral_pitch_deg", "pitch_direction",
     "looking_away_yaw_deg", "looking_away_exit_deg", "looking_away_min_seconds",
     "head_down_pitch_deg", "head_down_exit_deg", "head_down_min_seconds",
+    "head_up_pitch_deg", "head_up_exit_deg", "head_up_min_seconds",
     "eye_closed_blink_score", "eye_closed_exit_score", "drowsiness_min_seconds",
     "forward_yaw_deg", "forward_pitch_deg", "indicator_min_quality",
     "condition_release_seconds", "landmark_max_age_seconds", "indicator_max_gap_seconds",
     "face_not_visible_min_seconds", "high_movement_norm", "high_movement_min_seconds",
+    "restless_movement_norm", "restless_window_seconds", "restless_min_bursts",
+    "restless_movement_min_seconds", "left_seat_min_seconds",
     "event_cooldown_seconds",
 }
 

@@ -70,10 +70,13 @@
       ctx.fillStyle = known ? "#1a9c5b" : "#d98324";
       ctx.fillText(label, x1 * sx, y1 * sy - 4);
       ctx.fillStyle = "#fff";
+      const INDICATOR_LABELS = {
+        possible_drowsiness: "prolonged eye closure",
+        left_seat: "prolonged absence",
+      };
       ctx.fillText(
         (t.indicator_is_event ? "! " : "") +
-          (t.indicator === "possible_drowsiness" ? "prolonged eye closure" :
-            (t.indicator || "uncertain").replace(/_/g, " ")),
+          (INDICATOR_LABELS[t.indicator] || (t.indicator || "uncertain").replace(/_/g, " ")),
         x1 * sx,
         y2 * sy + 14
       );
