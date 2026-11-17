@@ -17,6 +17,7 @@ from .detection import detect_faces
 from .indicators import FrameSignals, IndicatorEngine
 from .landmarks import FaceLandmarkAnalyzer, match_signals_to_tracks
 from .liveness import LivenessGate
+from .antispoof import AntiSpoofClassifier
 from .recognition import Gallery, TrackIdentity
 from .tracking import ByteTracker
 
@@ -60,6 +61,7 @@ class MonitoringEngine:
         self.tracker = ByteTracker(cfg)
         self.indicators = IndicatorEngine(cfg)
         self.liveness = LivenessGate(cfg)
+        self._antispoof = AntiSpoofClassifier(cfg) if cfg.liveness_enabled else None
         self._identities: dict[int, TrackIdentity] = {}
         self._centroids: dict[int, tuple[float, float]] = {}
         self._open_events: dict[tuple[int, str], int] = {}
@@ -122,15 +124,34 @@ class MonitoringEngine:
         for t in tracks:
             tid = t["track_id"]
 
-            # --- liveness: ignore faces that never blink or deform (photos) --
+            # Only fresh measurements can provide liveness evidence.
             det_i = t.get("det_index")
             face_det = detections[det_i] if det_i is not None and 0 <= det_i < len(detections) else None
             lm_sig = signals_by_track.get(tid)
+            face_visible = face_det is not None
+            real_score = None
+            if self._antispoof is not None and face_visible and (
+                self._frame_no % max(1, self.cfg.landmark_every_n) == 0
+            ):
+                try:
+                    real_score = self._antispoof.score(frame, face_det.bbox)
+                except Exception:
+                    logger.exception("Anti-spoof inference failed; rejecting face")
+                    real_score = 0.0
             if not self.liveness.observe(
                 tid,
-                getattr(face_det, "kps", None),
-                getattr(lm_sig, "blink", None),
+                blink=getattr(lm_sig, "blink", None) if run_lm and face_visible else None,
+                real_score=real_score,
+                timestamp=now,
+                face_visible=face_visible,
             ):
+                # A previously accepted track can be revoked by a spoof score.
+                for tr in self.indicators.drop_track(tid):
+                    key = (tid, tr.condition)
+                    if key in self._open_events:
+                        self.cb.close_event(self._open_events.pop(key))
+                self._identities.pop(tid, None)
+                self._centroids.pop(tid, None)
                 continue
 
             self._seen_tracks.add(tid)

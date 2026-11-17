@@ -17,21 +17,23 @@ class PipelineConfig:
     process_every_n_frames: int = 2          # run the pipeline on 1 of every N frames
     capture_width: int = 640                  # downscale incoming frames to this width
     burn_in_overlay: bool = True              # draw boxes onto the frame (False = the web UI draws them)
-    landmark_every_n: int = 3                 # run MediaPipe on 1 of every N processed frames
+    landmark_every_n: int = 1                 # run MediaPipe on 1 of every N processed frames
 
     # --- Recognition ------------------------------------------------------
     recognition_threshold: float = 0.35     # cosine similarity to accept identity
     vote_window: int = 20                    # frames of identity history per track
     min_votes: int = 6                       # agreeing votes before an identity sticks
 
-    # --- Liveness (reject still photos) ----------------------------------
-    # A face is ignored until it blinks or its landmarks deform in a way a flat
-    # picture cannot. Set liveness_enabled=False to count every detected face.
+    # --- Liveness: trained screen/print classifier AND complete blink ------
     liveness_enabled: bool = True
-    liveness_lag_frames: int = 6             # compare landmarks to N processed frames ago
-    liveness_nonrigid_thresh: float = 0.04   # affine-fit residual / inter-eye distance
-    liveness_min_hits: int = 3               # frames over the threshold before latching live
-    liveness_blink_swing: float = 0.30       # blink blendshape range that proves a real eye
+    liveness_real_threshold: float = 0.90
+    liveness_min_hits: int = 3             # consecutive classifier passes
+    liveness_score_max_age: float = 0.75  # seconds; stale scores cannot count
+    liveness_blink_open: float = 0.20
+    liveness_blink_closed: float = 0.65
+    liveness_blink_max_seconds: float = 1.5
+    liveness_recheck_seconds: float = 15.0 # require another complete blink
+    liveness_min_face_pixels: int = 60
 
     # --- Tracking --------------------------------------------------------
     track_high_thresh: float = 0.5
@@ -109,6 +111,15 @@ class PipelineConfig:
     )
 
     def __post_init__(self):
+        if not 0 <= self.liveness_blink_open < self.liveness_blink_closed <= 1:
+            raise ValueError("Liveness blink thresholds must satisfy 0 <= open < closed <= 1")
+        if not 0 < self.liveness_real_threshold <= 1:
+            raise ValueError("liveness_real_threshold must be in (0, 1]")
+        if self.liveness_min_hits < 1 or self.liveness_min_face_pixels < 1:
+            raise ValueError("Liveness hit count and face size must be positive")
+        for name in ("liveness_score_max_age", "liveness_blink_max_seconds", "liveness_recheck_seconds"):
+            if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be finite and positive")
         for name in CALIBRATION_FIELDS:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
