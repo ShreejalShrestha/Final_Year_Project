@@ -6,6 +6,7 @@ app_name = "dashboard"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("sessions/", views.sessions, name="sessions"),
     path("session/<int:session_id>/", views.live, name="live"),
     path("session/<int:session_id>/start/", views.start_pipeline, name="start"),
     path("session/<int:session_id>/stop/", views.stop_pipeline, name="stop"),

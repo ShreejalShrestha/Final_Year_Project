@@ -1,15 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Enrol {{ student.full_name }}{% endblock %}
+{% block title %}Add face photos · {{ student.full_name }}{% endblock %}
+{% block crumbs %}
+  <li><a href="{% url 'students:list' %}">Students</a></li>
+  <li><a href="{% url 'students:detail' student.pk %}">{{ student.full_name }}</a></li>
+  <li aria-current="page">Add face photos</li>
+{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width:520px">
-  <h1>Add face photos — {{ student.full_name }}</h1>
-  <p class="hint">Upload several clear photos with modest pose and lighting
-  variation. Each usable photo becomes one ArcFace template. Uploading photos
-  records the student's consent.</p>
-  <form method="post" enctype="multipart/form-data">
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Add face photos</h1>
+    <p class="page-head__sub">For {{ student.full_name }}. Upload several clear photos with modest pose and lighting variation. Each usable photo becomes one ArcFace template.</p>
+  </div>
+</header>
+
+<div class="card form-card">
+  <form class="card__body form" method="post" enctype="multipart/form-data" novalidate>
     {% csrf_token %}
-    {{ form.as_p }}
-    <button class="btn" type="submit">Upload &amp; generate templates</button>
+    <div class="alert alert--info">{% include "includes/icon.html" with name="info" %}<p>Uploading photos records this student’s consent.</p></div>
+    {% include "includes/form_fields.html" %}
+    <div class="form__actions">
+      <button class="btn" type="submit">{% include "includes/icon.html" with name="upload" %}Upload and generate templates</button>
+      <a class="btn btn--secondary" href="{% url 'students:detail' student.pk %}">Cancel</a>
+    </div>
   </form>
 </div>
 {% endblock %}

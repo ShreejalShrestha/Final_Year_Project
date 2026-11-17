@@ -23,7 +23,12 @@ def session_attendance(request, session_id):
     return render(
         request,
         "attendance/session.html",
-        {"session": session, "records": records, "unmarked": unmarked},
+        {
+            "session": session,
+            "records": records,
+            "unmarked": unmarked,
+            "present_count": sum(1 for r in records if r.status == Attendance.Status.PRESENT),
+        },
     )
 
 

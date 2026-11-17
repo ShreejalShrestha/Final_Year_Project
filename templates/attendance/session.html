@@ -1,63 +1,128 @@
 {% extends "base.html" %}
 {% block title %}Attendance · {{ session.course_class.name }}{% endblock %}
+{% block crumbs %}
+  <li><a href="{% url 'dashboard:sessions' %}">Sessions</a></li>
+  <li><a href="{% url 'dashboard:live' session.pk %}">{{ session.course_class.name }}</a></li>
+  <li aria-current="page">Attendance</li>
+{% endblock %}
+
 {% block content %}
-<h1>Attendance — {{ session.course_class.name }} ({{ session.date }})</h1>
-<p><a href="{% url 'dashboard:live' session.pk %}">← back to live view</a></p>
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Attendance</h1>
+    <p class="page-head__sub">{{ session.course_class.name }} · {{ session.date|date:"l, j F Y" }}</p>
+  </div>
+  <div class="page-head__actions">
+    {% include "includes/status_badge.html" with status=session.status %}
+    <a class="btn btn--secondary" href="{% url 'dashboard:live' session.pk %}">{% include "includes/icon.html" with name="arrow-left" %}Back to live view</a>
+  </div>
+</header>
 
-<div class="card">
-  <h2>Marked ({{ records|length }})</h2>
-  <table>
-    <thead><tr><th>Student</th><th>Status</th><th>Source</th><th>Time</th><th>Confidence</th><th>Correct</th></tr></thead>
-    <tbody>
-      {% for r in records %}
-      <tr>
-        <td>{{ r.student.full_name }} <span class="hint">{{ r.student.student_id }}</span></td>
-        <td><span class="pill {% if r.status == 'present' %}ok{% endif %}">{{ r.get_status_display }}</span></td>
-        <td>{{ r.get_source_display }}{% if r.corrected %} <span class="hint">(corrected)</span>{% endif %}</td>
-        <td>{{ r.marked_at|time:"H:i:s" }}</td>
-        <td>{{ r.recognition_confidence|floatformat:3|default:"—" }}</td>
-        <td>
-          <form method="post" action="{% url 'attendance:correct' session.pk %}" style="display:flex;gap:4px">
-            {% csrf_token %}
-            <input type="hidden" name="student_id" value="{{ r.student.pk }}">
-            <select name="status">
-              <option value="present" {% if r.status == 'present' %}selected{% endif %}>present</option>
-              <option value="absent" {% if r.status == 'absent' %}selected{% endif %}>absent</option>
-              <option value="excused" {% if r.status == 'excused' %}selected{% endif %}>excused</option>
-            </select>
-            <button class="link">save</button>
-          </form>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="hint">No attendance recorded yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<dl class="stats stats--3" aria-label="Attendance summary">
+  <div class="stat">
+    <dt class="stat__label">{% include "includes/icon.html" with name="circle-check" class="icon--sm" %}Present</dt>
+    <dd class="stat__value">{{ present_count }}</dd>
+  </div>
+  <div class="stat">
+    <dt class="stat__label">{% include "includes/icon.html" with name="clipboard" class="icon--sm" %}Marked</dt>
+    <dd class="stat__value">{{ records|length }}</dd>
+  </div>
+  <div class="stat">
+    <dt class="stat__label">{% include "includes/icon.html" with name="users" class="icon--sm" %}Not marked</dt>
+    <dd class="stat__value">{{ unmarked|length }}</dd>
+    <dd class="stat__hint">Active students without a record</dd>
+  </div>
+</dl>
 
-<div class="card">
-  <h2>Not marked — add manually</h2>
-  <table>
-    <thead><tr><th>Student</th><th></th></tr></thead>
-    <tbody>
-      {% for s in unmarked %}
-      <tr>
-        <td>{{ s.full_name }} <span class="hint">{{ s.student_id }}</span></td>
-        <td>
-          <form method="post" action="{% url 'attendance:correct' session.pk %}">
-            {% csrf_token %}
-            <input type="hidden" name="student_id" value="{{ s.pk }}">
-            <input type="hidden" name="status" value="present">
-            <input type="hidden" name="note" value="Manual add">
-            <button class="link">mark present</button>
-          </form>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="2" class="hint">Everyone active is marked.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<section class="card card--flush" aria-labelledby="marked">
+  <div class="card__head">
+    <div>
+      <h2 id="marked" class="card__title">Marked</h2>
+      <p class="card__sub">Change a status to correct the record. Corrections are logged.</p>
+    </div>
+  </div>
+  {% if records %}
+  <div class="table-scroll">
+    <table class="table table--stack">
+      <thead>
+        <tr>
+          <th scope="col">Student</th>
+          <th scope="col">Status</th>
+          <th scope="col">Source</th>
+          <th scope="col">Time</th>
+          <th scope="col">Confidence</th>
+          <th scope="col">Correct</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td class="cell-primary">
+            <div class="cell-title">{{ r.student.full_name }}</div>
+            <div class="cell-sub num">{{ r.student.student_id }}</div>
+          </td>
+          <td data-label="Status"><span class="badge {% if r.status == 'present' %}badge--ok{% elif r.status == 'excused' %}badge--warn{% else %}badge--plain{% endif %}">{{ r.get_status_display }}</span></td>
+          <td data-label="Source">{{ r.get_source_display }}{% if r.corrected %} <span class="cell-sub">(corrected)</span>{% endif %}</td>
+          <td data-label="Time" class="num">{{ r.marked_at|time:"H:i:s" }}</td>
+          <td data-label="Confidence" class="num">{% if r.recognition_confidence is not None %}{{ r.recognition_confidence|floatformat:3 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="cell-actions-td">
+            <form class="cell-actions cell-actions--start" method="post" action="{% url 'attendance:correct' session.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="student_id" value="{{ r.student.pk }}">
+              <label class="sr-only" for="status-{{ r.pk }}">Status for {{ r.student.full_name }}</label>
+              <select id="status-{{ r.pk }}" name="status" class="select--inline">
+                <option value="present"{% if r.status == 'present' %} selected{% endif %}>Present</option>
+                <option value="absent"{% if r.status == 'absent' %} selected{% endif %}>Absent</option>
+                <option value="excused"{% if r.status == 'excused' %} selected{% endif %}>Excused</option>
+              </select>
+              <button type="submit" class="btn btn--sm btn--secondary">Save</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty empty--compact">
+    <span class="empty__icon">{% include "includes/icon.html" with name="clipboard" %}</span>
+    <h3 class="empty__title">No attendance recorded yet</h3>
+    <p class="empty__body">Students appear here when they are recognised during an active session, or when you add them below.</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card card--flush" aria-labelledby="unmarked">
+  <div class="card__head">
+    <div>
+      <h2 id="unmarked" class="card__title">Not marked</h2>
+      <p class="card__sub">Add a student manually if they attended but were not recognised.</p>
+    </div>
+  </div>
+  {% if unmarked %}
+  <ul class="rows">
+    {% for s in unmarked %}
+    <li class="row">
+      <div class="row__main">
+        <p class="row__title">{{ s.full_name }}</p>
+        <div class="row__meta"><span class="num">{{ s.student_id }}</span></div>
+      </div>
+      <form class="inline-form" method="post" action="{% url 'attendance:correct' session.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="student_id" value="{{ s.pk }}">
+        <input type="hidden" name="status" value="present">
+        <input type="hidden" name="note" value="Manual add">
+        <button type="submit" class="btn btn--sm btn--secondary">{% include "includes/icon.html" with name="check" class="icon--sm" %}Mark present</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty empty--compact">
+    <span class="empty__icon">{% include "includes/icon.html" with name="circle-check" %}</span>
+    <h3 class="empty__title">Everyone is marked</h3>
+    <p class="empty__body">Every active student has an attendance record for this session.</p>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

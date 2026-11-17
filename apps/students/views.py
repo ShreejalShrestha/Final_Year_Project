@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
@@ -13,8 +14,35 @@ from .services import enroll_student_images
 
 @login_required
 def student_list(request):
-    students = Student.objects.all()
-    return render(request, "students/list.html", {"students": students})
+    query = request.GET.get("q", "").strip()
+    recognition = request.GET.get("recognition", "")
+    students = Student.objects.annotate(template_count=Count("embeddings"))
+    total = students.count()
+    if query:
+        students = students.filter(
+            Q(full_name__icontains=query)
+            | Q(student_id__icontains=query)
+            | Q(program__icontains=query)
+            | Q(semester_section__icontains=query)
+        )
+    ready = Q(consent_given=True, is_active=True, template_count__gt=0)
+    if recognition == "ready":
+        students = students.filter(ready)
+    elif recognition == "pending":
+        students = students.exclude(ready)
+    else:
+        recognition = ""
+    return render(
+        request,
+        "students/list.html",
+        {
+            "students": students,
+            "total": total,
+            "q": query,
+            "recognition": recognition,
+            "filtered": bool(query or recognition),
+        },
+    )
 
 
 @login_required

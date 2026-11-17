@@ -1,12 +1,26 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
+{% block crumbs %}
+  <li><a href="{% url 'students:list' %}">Students</a></li>
+  <li aria-current="page">{{ title }}</li>
+{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width:520px">
-  <h1>{{ title }}</h1>
-  <form method="post" enctype="multipart/form-data">
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Enrol a student</h1>
+    <p class="page-head__sub">Add the student’s details and a clear photo. The photo is also used for face recognition, so no second upload is needed.</p>
+  </div>
+</header>
+
+<div class="card form-card">
+  <form class="card__body form" method="post" enctype="multipart/form-data" novalidate>
     {% csrf_token %}
-    {{ form.as_p }}
-    <button class="btn" type="submit">Save</button>
+    {% include "includes/form_fields.html" %}
+    <div class="form__actions">
+      <button class="btn" type="submit">Enrol student</button>
+      <a class="btn btn--secondary" href="{% url 'students:list' %}">Cancel</a>
+    </div>
   </form>
 </div>
 {% endblock %}

@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -9,14 +10,10 @@ from .models import ClassSession, CourseClass
 
 @login_required
 def class_list(request):
-    return render(
-        request,
-        "classes/list.html",
-        {
-            "classes": CourseClass.objects.all(),
-            "sessions": ClassSession.objects.select_related("course_class")[:25],
-        },
+    classes = CourseClass.objects.select_related("teacher", "teacher__profile").annotate(
+        session_count=Count("sessions")
     )
+    return render(request, "classes/list.html", {"classes": classes})
 
 
 @login_required
@@ -26,18 +23,29 @@ def class_create(request):
         form.save()
         messages.success(request, "Class created.")
         return redirect("classes:list")
-    return render(request, "classes/form.html", {"form": form, "title": "New class"})
+    return render(
+        request,
+        "classes/form.html",
+        {"form": form, "title": "New class", "kind": "class"},
+    )
 
 
 @login_required
 def session_create(request):
     initial = {"teacher": request.user}
+    preselected = request.GET.get("course_class", "")
+    if preselected.isdigit() and CourseClass.objects.filter(pk=preselected).exists():
+        initial["course_class"] = int(preselected)
     form = ClassSessionForm(request.POST or None, initial=initial)
     if request.method == "POST" and form.is_valid():
         session = form.save()
         messages.success(request, "Session created.")
         return redirect("dashboard:live", session_id=session.pk)
-    return render(request, "classes/form.html", {"form": form, "title": "New session"})
+    return render(
+        request,
+        "classes/form.html",
+        {"form": form, "title": "New session", "kind": "session"},
+    )
 
 
 @login_required
@@ -58,4 +66,4 @@ def session_close(request, pk):
 
     pipeline_registry.stop(session.pk)
     messages.info(request, "Session closed.")
-    return redirect("dashboard:home")
+    return redirect("dashboard:sessions")

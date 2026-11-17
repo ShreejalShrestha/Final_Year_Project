@@ -1,55 +1,96 @@
 {% extends "base.html" %}
+{% load people %}
+{% load assets %}
 {% block title %}Live · {{ session.course_class.name }}{% endblock %}
+{% block crumbs %}
+  <li><a href="{% url 'dashboard:sessions' %}">Sessions</a></li>
+  <li aria-current="page">{{ session.course_class.name }}</li>
+{% endblock %}
+
 {% block content %}
-<h1>{{ session.course_class.name }} — {{ session.date }}</h1>
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ session.course_class.name }}</h1>
+    <div class="row__meta row__meta--head">
+      {% include "includes/status_badge.html" with status=session.status %}
+      <span>{% include "includes/icon.html" with name="calendar" %}{{ session.date|date:"l, j F Y" }}</span>
+      {% if session.started_at %}<span class="num">{% include "includes/icon.html" with name="clock" %}Started {{ session.started_at|time:"H:i" }}{% if session.ended_at %} · Ended {{ session.ended_at|time:"H:i" }}{% endif %}</span>{% endif %}
+      {% if session.teacher %}<span>{% include "includes/icon.html" with name="user" %}{{ session.teacher|person }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="page-head__actions">
+    <a class="btn btn--secondary" href="{% url 'attendance:session' session.pk %}">{% include "includes/icon.html" with name="clipboard" %}Attendance sheet</a>
+    {% if not session.is_active %}
+    <form class="inline-form" method="post" action="{% url 'classes:session_activate' session.pk %}">{% csrf_token %}
+      <button class="btn" type="submit">{% include "includes/icon.html" with name="play" %}{% if session.status == 'closed' %}Reopen session{% else %}Activate session{% endif %}</button>
+    </form>
+    {% else %}
+    <form class="inline-form" method="post" action="{% url 'classes:session_close' session.pk %}" data-confirm="Close this session? The camera will stop and attendance will no longer be recorded.">{% csrf_token %}
+      <button class="btn btn--danger" type="submit">{% include "includes/icon.html" with name="stop" %}Close session</button>
+    </form>
+    {% endif %}
+  </div>
+</header>
 
-<div class="statusline">
-  <span>Status: <span class="pill {% if session.is_active %}ok{% endif %}">{{ session.get_status_display }}</span></span>
-  <span id="fps">fps: —</span>
-  <span id="pipeline-state">pipeline: stopped</span>
-  <span id="pipeline-error" style="color:#c0392b"></span>
-</div>
+{% if not session.is_active %}
+<div class="alert alert--info">{% include "includes/icon.html" with name="info" %}<p>{% if session.status == 'closed' %}This session is closed.{% else %}This session is not active yet.{% endif %} Attendance is only recorded while a session is active.</p></div>
+{% endif %}
 
-<div style="margin-bottom:14px;display:flex;gap:8px">
-  {% if not session.is_active %}
-  <form method="post" action="{% url 'classes:session_activate' session.pk %}">{% csrf_token %}
-    <button class="btn">Activate session (record attendance)</button>
-  </form>
-  {% else %}
-  <form method="post" action="{% url 'classes:session_close' session.pk %}">{% csrf_token %}
-    <button class="btn danger">Close session</button>
-  </form>
-  {% endif %}
-  <button class="btn" id="btn-start">Start camera</button>
-  <button class="btn secondary" id="btn-stop">Stop camera</button>
-  <a class="btn secondary" href="{% url 'attendance:session' session.pk %}">Attendance sheet</a>
+<div class="live-bar">
+  <button class="btn" id="btn-start" type="button">{% include "includes/icon.html" with name="camera" %}Start camera</button>
+  <button class="btn btn--secondary" id="btn-stop" type="button">{% include "includes/icon.html" with name="stop" %}Stop camera</button>
+  <div class="live-bar__status" aria-live="polite">
+    <span class="chip" id="pipeline-state" data-state="stopped">Camera stopped</span>
+    <span class="chip" id="fps">— fps</span>
+    <span class="chip chip--error" id="pipeline-error" role="alert" hidden></span>
+  </div>
 </div>
 
 <div class="live-grid">
-  <div class="stage" id="stage" style="align-self:start">
-    {# Inline styles on purpose: this wrapper hugs the video so the overlay canvas can never be stretched by the grid row. #}
-    <div style="position:relative;line-height:0">
-      <img id="feed" alt="live feed" src="" style="display:block;width:100%;height:auto">
-      <canvas id="overlay" style="position:absolute;left:0;top:0"></canvas>
+  <div>
+    <div class="stage" id="stage">
+      <div class="stage__inner">
+        <img id="feed" alt="Live classroom camera feed" src="">
+        <canvas id="overlay" aria-hidden="true"></canvas>
+      </div>
+      <div class="stage__idle">
+        {% include "includes/icon.html" with name="camera" %}
+        <strong>Camera is off</strong>
+        <span>Select Start camera to begin recognition and monitoring.</span>
+      </div>
     </div>
+
+    <dl class="stats stats--3 counts" aria-label="Live counts">
+      <div class="stat"><dt class="stat__label">In view</dt><dd class="stat__value" id="count-view">0</dd></div>
+      <div class="stat"><dt class="stat__label">Recognised</dt><dd class="stat__value" id="count-known">0</dd></div>
+      <div class="stat"><dt class="stat__label">Unknown</dt><dd class="stat__value" id="count-unknown">0</dd></div>
+    </dl>
   </div>
-  <aside class="sidepanel" id="panel">
-    <p class="hint">Click a recognised student in the video to view approved
-    information. Unknown / low-confidence tracks are not clickable.</p>
-    <div id="panel-body"></div>
+
+  <aside class="card sidepanel" id="panel" aria-label="Student details">
+    <div class="card__head"><h2 class="card__title">Student details</h2></div>
+    <div class="sidepanel__body" id="panel-body" aria-live="polite">
+      <div class="empty empty--compact empty--bare">
+        <span class="empty__icon">{% include "includes/icon.html" with name="users" %}</span>
+        <h3 class="empty__title">No student selected</h3>
+        <p class="empty__body">Click a recognised student in the video to see approved information. Unknown or low-confidence tracks are not clickable.</p>
+      </div>
+    </div>
   </aside>
 </div>
 
-<p class="hint">Labels describe visible head position and eye closure, not attention or emotion.
+<p class="legend">
+  <strong>Reading the labels.</strong> Labels describe visible head position and eye closure, not attention or emotion.
   “Uncertain” means the available measurements do not support a reliable state.
-  An exclamation mark indicates a condition that passed its duration threshold.</p>
+  An exclamation mark means a condition passed its duration threshold.
+</p>
 
 <script>
 window.SESSION_ID = {{ session.pk }};
 window.WORKER_RUNNING = {{ worker_running|yesno:"true,false" }};
 </script>
 {% endblock %}
+
 {% block scripts %}
-{% load static %}
-<script src="{% static 'js/dashboard.js' %}?v=5"></script>
+<script src="{% static_v 'js/dashboard.js' %}"></script>
 {% endblock %}

@@ -1,0 +1,33 @@
+{% load static assets %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#15183a">
+  <title>{% block title %}Sign in{% endblock %} · Smart Classroom</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%234f46e5%27/%3E%3Cpath d=%27M9 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zm12 4 4-3v8l-4-3z%27 fill=%27white%27/%3E%3C/svg%3E">
+  <link rel="preload" href="{% static 'fonts/inter-latin-wght-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static_v 'css/app.css' %}">
+</head>
+<body class="auth-body">
+{% include "includes/icons.html" %}
+<main class="auth">
+  <section class="auth__intro">
+    <a class="brand brand--lg" href="/">
+      <span class="brand__mark" aria-hidden="true">{% include "includes/icon.html" with name="video" %}</span>
+      <span class="brand__name">Smart Classroom</span>
+    </a>
+    <div class="auth__pitch">
+      <h2>Attendance and classroom monitoring, with a person always in the loop.</h2>
+      <p>Mark attendance by face recognition, review observable classroom indicators, and correct any record by hand.</p>
+    </div>
+    <p class="auth__fine">Observable indicators only. No emotion, engagement or misconduct judgements.</p>
+  </section>
+  <section class="auth__panel">
+    <div class="auth__card">
+      {% block content %}{% endblock %}
+    </div>
+  </section>
+</main>
+</body>
+</html>

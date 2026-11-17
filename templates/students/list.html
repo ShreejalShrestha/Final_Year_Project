@@ -1,27 +1,91 @@
 {% extends "base.html" %}
 {% block title %}Students{% endblock %}
+{% block crumbs %}<li aria-current="page">Students</li>{% endblock %}
+
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:center">
-  <h1>Students</h1>
-  <a class="btn" href="{% url 'students:create' %}">Enrol new student</a>
-</div>
-<div class="card">
-  <table>
-    <thead><tr><th>ID</th><th>Name</th><th>Program</th><th>Sem/Section</th><th>Consent</th><th>Templates</th></tr></thead>
-    <tbody>
-      {% for s in students %}
-      <tr>
-        <td><a href="{% url 'students:detail' s.pk %}">{{ s.student_id }}</a></td>
-        <td>{{ s.full_name }}</td>
-        <td>{{ s.program }}</td>
-        <td>{{ s.semester_section }}</td>
-        <td>{% if s.consent_given %}<span class="pill ok">yes</span>{% else %}<span class="pill warn">no</span>{% endif %}</td>
-        <td>{% if s.is_enrolled %}<span class="pill ok">{{ s.embedding_count }}</span>{% else %}<span class="pill warn">{{ s.embedding_count }}</span>{% endif %}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="hint">No students enrolled yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Students</h1>
+    <p class="page-head__sub">Everyone enrolled for attendance. A student is ready for recognition once consent is recorded and a face template exists.</p>
+  </div>
+  {% if is_app_admin %}
+  <div class="page-head__actions">
+    <a class="btn" href="{% url 'students:create' %}">{% include "includes/icon.html" with name="user-plus" %}Enrol student</a>
+  </div>
+  {% endif %}
+</header>
+
+<section class="card card--flush" aria-label="Student list">
+  <form class="toolbar" method="get" role="search">
+    <div class="search">
+      {% include "includes/icon.html" with name="search" %}
+      <label class="sr-only" for="student-search">Search students</label>
+      <input id="student-search" type="search" name="q" value="{{ q }}" placeholder="Search by name, ID or program" autocomplete="off">
+    </div>
+    <label class="sr-only" for="student-filter">Recognition status</label>
+    <select id="student-filter" name="recognition" class="select--toolbar">
+      <option value="">All students</option>
+      <option value="ready"{% if recognition == 'ready' %} selected{% endif %}>Ready for recognition</option>
+      <option value="pending"{% if recognition == 'pending' %} selected{% endif %}>Needs attention</option>
+    </select>
+    <button type="submit" class="btn btn--secondary">Apply</button>
+    {% if filtered %}<a class="btn btn--ghost" href="{% url 'students:list' %}">Clear</a>{% endif %}
+    <span class="toolbar__spacer"></span>
+    <span class="toolbar__meta" aria-live="polite">{{ students|length }} of {{ total }} student{{ total|pluralize }}</span>
+  </form>
+
+  {% if students %}
+  <div class="table-scroll">
+    <table class="table table--stack">
+      <thead>
+        <tr>
+          <th scope="col">Student</th>
+          <th scope="col">Program</th>
+          <th scope="col">Semester / section</th>
+          <th scope="col">Consent</th>
+          <th scope="col">Recognition</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td class="cell-primary">
+            <div class="person">
+              <span class="avatar" aria-hidden="true">{% if s.profile_image %}<img src="{{ s.profile_image.url }}" alt="" loading="lazy">{% else %}{{ s.full_name|slice:":1"|upper }}{% endif %}</span>
+              <div>
+                <a class="person__name" href="{% url 'students:detail' s.pk %}">{{ s.full_name }}</a>
+                <div class="cell-sub num">{{ s.student_id }}{% if not s.is_active %} · Inactive{% endif %}</div>
+              </div>
+            </div>
+          </td>
+          <td data-label="Program">{{ s.program|default:"—" }}</td>
+          <td data-label="Section">{{ s.semester_section|default:"—" }}</td>
+          <td data-label="Consent">{% if s.consent_given %}<span class="badge badge--ok">Recorded</span>{% else %}<span class="badge badge--warn">Not recorded</span>{% endif %}</td>
+          <td data-label="Recognition">
+            {% if s.consent_given and s.is_active and s.template_count %}<span class="badge badge--ok">Ready · {{ s.template_count }} template{{ s.template_count|pluralize }}</span>
+            {% elif not s.template_count %}<span class="badge badge--warn">Needs face photo</span>
+            {% elif not s.consent_given %}<span class="badge badge--warn">Consent needed</span>
+            {% else %}<span class="badge badge--plain">Inactive</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif filtered %}
+  <div class="empty">
+    <span class="empty__icon">{% include "includes/icon.html" with name="search" %}</span>
+    <h2 class="empty__title">No students match your filters</h2>
+    <p class="empty__body">Try a different name or ID, or clear the filters to see everyone.</p>
+    <a class="btn btn--secondary" href="{% url 'students:list' %}">Clear filters</a>
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty__icon">{% include "includes/icon.html" with name="users" %}</span>
+    <h2 class="empty__title">No students enrolled yet</h2>
+    <p class="empty__body">Enrolled students appear here with their consent and recognition status.</p>
+    {% if is_app_admin %}<a class="btn" href="{% url 'students:create' %}">{% include "includes/icon.html" with name="user-plus" %}Enrol student</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

@@ -1,43 +1,102 @@
-{% load static %}
-<!doctype html>
+{% load static people assets %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Smart Classroom Monitoring{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=3">
+  <meta name="theme-color" content="#15183a">
+  <title>{% block title %}Smart Classroom{% endblock %} · Smart Classroom</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%234f46e5%27/%3E%3Cpath d=%27M9 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zm12 4 4-3v8l-4-3z%27 fill=%27white%27/%3E%3C/svg%3E">
+  <link rel="preload" href="{% static 'fonts/inter-latin-wght-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static_v 'css/app.css' %}">
 </head>
 <body>
-<header class="topbar">
-  <a class="brand" href="{% url 'dashboard:home' %}">Smart Classroom</a>
-  {% if user.is_authenticated %}
-  <nav>
-    <a href="{% url 'dashboard:home' %}">Dashboard</a>
-    <a href="{% url 'students:list' %}">Students</a>
-    <a href="{% url 'classes:list' %}">Classes</a>
-    <a href="{% url 'admin:index' %}">Admin</a>
-  </nav>
-  <span class="spacer"></span>
-  <span class="who">{{ user.username }} · {{ user.profile.get_role_display }}</span>
-  <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
-    <button class="link">Sign out</button>
-  </form>
-  {% endif %}
-</header>
+{% include "includes/icons.html" %}
+<a class="skip-link" href="#main">Skip to content</a>
 
-<main class="container">
-  {% if messages %}
-    <ul class="messages">
-      {% for message in messages %}<li class="msg {{ message.tags }}">{{ message }}</li>{% endfor %}
-    </ul>
-  {% endif %}
-  {% block content %}{% endblock %}
-</main>
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Primary">
+    <div class="sidebar__head">
+      <a class="brand" href="{% url 'dashboard:home' %}">
+        <span class="brand__mark" aria-hidden="true">{% include "includes/icon.html" with name="video" %}</span>
+        <span class="brand__name">Smart Classroom</span>
+      </a>
+      <button type="button" class="icon-btn icon-btn--onDark sidebar__close" data-nav-close aria-label="Close menu">
+        {% include "includes/icon.html" with name="x" %}
+      </button>
+    </div>
 
-<footer class="footer">
-  <p>Observable indicators only — not emotion, engagement, or misconduct judgements.
-  Human review is required for every decision.</p>
-</footer>
+    <nav class="nav" aria-label="Main">
+      <ul>
+        <li><a class="nav__link" href="{% url 'dashboard:home' %}"{% if nav_section == 'overview' %} aria-current="page"{% endif %}>
+          {% include "includes/icon.html" with name="dashboard" %}Overview</a></li>
+        <li><a class="nav__link" href="{% url 'students:list' %}"{% if nav_section == 'students' %} aria-current="page"{% endif %}>
+          {% include "includes/icon.html" with name="users" %}Students</a></li>
+        <li><a class="nav__link" href="{% url 'classes:list' %}"{% if nav_section == 'classes' %} aria-current="page"{% endif %}>
+          {% include "includes/icon.html" with name="book" %}Classes</a></li>
+        <li><a class="nav__link" href="{% url 'dashboard:sessions' %}"{% if nav_section == 'sessions' %} aria-current="page"{% endif %}>
+          {% include "includes/icon.html" with name="calendar" %}Sessions</a></li>
+      </ul>
+      {% if can_open_admin %}
+      <p class="nav__group">Administration</p>
+      <ul>
+        <li><a class="nav__link" href="{% url 'admin:index' %}">
+          {% include "includes/icon.html" with name="shield" %}Admin site</a></li>
+      </ul>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar__foot">
+      <div class="account">
+        <span class="avatar avatar--onDark" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
+        <div class="account__text">
+          <p class="account__name">{{ user|person }}</p>
+          <p class="account__role">{{ user.profile.get_role_display|default:"Staff" }}</p>
+        </div>
+      </div>
+      <div class="account__actions">
+        <a class="nav__link nav__link--sm" href="{% url 'accounts:password_change' %}">
+          {% include "includes/icon.html" with name="lock" %}Change password</a>
+        <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}
+          <button type="submit" class="nav__link nav__link--sm">
+            {% include "includes/icon.html" with name="logout" %}Sign out</button>
+        </form>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" data-nav-close hidden></div>
+
+  <div class="workspace">
+    <header class="topbar">
+      <button type="button" class="icon-btn topbar__menu" id="nav-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Open menu">
+        {% include "includes/icon.html" with name="menu" %}
+      </button>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <ol>{% block crumbs %}{% endblock %}</ol>
+      </nav>
+      <p class="topbar__date">{% now "l, j F Y" %}</p>
+    </header>
+
+    <main class="page" id="main" tabindex="-1">
+      {% if messages %}
+      <div class="messages" role="status">
+        {% for message in messages %}
+        <div class="alert alert--{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}">
+          {% if message.tags == 'error' or message.tags == 'warning' %}{% include "includes/icon.html" with name="alert" %}
+          {% elif message.tags == 'success' %}{% include "includes/icon.html" with name="circle-check" %}
+          {% else %}{% include "includes/icon.html" with name="info" %}{% endif %}
+          <p>{{ message }}</p>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% block content %}{% endblock %}
+
+      {% block footer_note %}{% include "includes/disclaimer.html" %}{% endblock %}
+    </main>
+  </div>
+</div>
+<script src="{% static_v 'js/app.js' %}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

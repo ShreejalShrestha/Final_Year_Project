@@ -1,5 +1,6 @@
 (function () {
   const SID = window.SESSION_ID;
+  const stage = document.getElementById("stage");
   const feed = document.getElementById("feed");
   const canvas = document.getElementById("overlay");
   const ctx = canvas.getContext("2d");
@@ -7,9 +8,21 @@
   const stateEl = document.getElementById("pipeline-state");
   const errEl = document.getElementById("pipeline-error");
   const panelBody = document.getElementById("panel-body");
+  const countView = document.getElementById("count-view");
+  const countKnown = document.getElementById("count-known");
+  const countUnknown = document.getElementById("count-unknown");
+  const FONT = '600 12.5px Inter, system-ui, sans-serif';
 
   let tracks = [];
   let selectedStudent = null;
+  let startingSince = 0;
+
+  // User-supplied text (names, programs) must never reach innerHTML unescaped.
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+  }
 
   function csrf() {
     const m = document.cookie.match(/csrftoken=([^;]+)/);
@@ -18,18 +31,45 @@
   const post = (url) =>
     fetch(url, { method: "POST", headers: { "X-CSRFToken": csrf() } }).then((r) => r.json());
 
+  function setState(state, label) {
+    stateEl.dataset.state = state;
+    stateEl.textContent = label;
+  }
+  function setError(message) {
+    errEl.textContent = message || "";
+    errEl.hidden = !message;
+  }
+  function setCounts(list) {
+    const known = list.filter((t) => t.student_name).length;
+    countView.textContent = list.length;
+    countKnown.textContent = known;
+    countUnknown.textContent = list.length - known;
+  }
+
   document.getElementById("btn-start").onclick = () => {
-    stateEl.textContent = "pipeline: starting…";
-    post(`/dashboard/session/${SID}/start/`).then((d) => {
-      if (d.error) errEl.textContent = d.error;
-      startFeed();
-    });
+    setState("starting", "Starting camera…");
+    startingSince = Date.now();
+    post(`/dashboard/session/${SID}/start/`)
+      .then((d) => {
+        setError(d.error);
+        startFeed();
+      })
+      .catch(() => {
+        setState("stopped", "Camera stopped");
+        setError("Could not reach the server to start the camera.");
+      });
   };
   document.getElementById("btn-stop").onclick = () => {
-    post(`/dashboard/session/${SID}/stop/`).then(() => {
-      stateEl.textContent = "pipeline: stopped";
-      feed.src = "";
-    });
+    post(`/dashboard/session/${SID}/stop/`)
+      .then(() => {
+        setState("stopped", "Camera stopped");
+        feed.removeAttribute("src");
+        stage.classList.remove("is-live");
+        tracks = [];
+        setCounts(tracks);
+        draw();
+      })
+      .catch(() => setError("Could not reach the server to stop the camera."));
   };
 
   function startFeed() {
@@ -53,6 +93,21 @@
     return { sx: feed.clientWidth / nw, sy: feed.clientHeight / nh };
   }
 
+  const INDICATOR_LABELS = {
+    possible_drowsiness: "prolonged eye closure",
+    left_seat: "prolonged absence",
+  };
+
+  // Text on a translucent chip so labels stay readable on any video background.
+  function tag(text, x, y, fg, bg) {
+    ctx.font = FONT;
+    const w = ctx.measureText(text).width + 10;
+    ctx.fillStyle = bg;
+    ctx.fillRect(x, y - 15, w, 20);
+    ctx.fillStyle = fg;
+    ctx.fillText(text, x + 5, y);
+  }
+
   function draw() {
     resizeCanvas();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -60,25 +115,21 @@
     tracks.forEach((t) => {
       const [x1, y1, x2, y2] = t.bbox;
       const known = !!t.student_name;
+      const colour = known ? "#22c55e" : "#f59e0b";
       ctx.lineWidth = t.track_id === (selectedStudent && selectedStudent.track_id) ? 3 : 2;
-      ctx.strokeStyle = known ? "#1a9c5b" : "#d98324";
+      ctx.strokeStyle = colour;
       ctx.strokeRect(x1 * sx, y1 * sy, (x2 - x1) * sx, (y2 - y1) * sy);
       const label =
         `#${t.track_id} ` + (known ? t.student_name : "Unknown") +
         (t.attendance_status === "present" ? " ✓" : "");
-      ctx.font = "13px system-ui";
-      ctx.fillStyle = known ? "#1a9c5b" : "#d98324";
-      ctx.fillText(label, x1 * sx, y1 * sy - 4);
-      ctx.fillStyle = "#fff";
-      const INDICATOR_LABELS = {
-        possible_drowsiness: "prolonged eye closure",
-        left_seat: "prolonged absence",
-      };
-      ctx.fillText(
+      tag(label, x1 * sx, Math.max(y1 * sy - 4, 16), "#0b0d1f", colour);
+      tag(
         (t.indicator_is_event ? "! " : "") +
           (INDICATOR_LABELS[t.indicator] || (t.indicator || "uncertain").replace(/_/g, " ")),
         x1 * sx,
-        y2 * sy + 14
+        y2 * sy + 18,
+        "#fff",
+        "rgba(11, 13, 31, 0.75)"
       );
     });
   }
@@ -101,39 +152,56 @@
   });
 
   function loadProfile(studentId) {
-    panelBody.innerHTML = "<p class='hint'>Loading…</p>";
+    panelBody.innerHTML = "<p class='fine'>Loading student details…</p>";
     fetch(`/dashboard/session/${SID}/student/${studentId}/`)
-      .then((r) => r.json())
-      .then(renderProfile);
+      .then((r) => {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .then(renderProfile)
+      .catch(() => {
+        panelBody.innerHTML =
+          "<div class='alert alert--error'><p>Student details could not be loaded. Try selecting the student again.</p></div>";
+      });
   }
 
   function row(k, v) {
-    return `<div class="row"><span>${k}</span><strong>${v}</strong></div>`;
+    return `<div class="kv__row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`;
   }
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
   function renderProfile(p) {
     const hist = p.attendance.history
-      .map((h) => `<li>${h.date} — ${h.class}: <span class="pill">${h.status}</span></li>`)
-      .join("");
-    const events = p.monitoring.recent_events
       .map(
-        (ev) =>
-          `<li>${ev.start} — ${ev.type} (${ev.duration_s}s)${ev.open ? " …ongoing" : ""}</li>`
+        (h) =>
+          `<li><span>${esc(h.date)} · ${esc(h.class)}</span><span class="badge badge--plain">${esc(cap(h.status))}</span></li>`
       )
-      .join("") || "<li class='hint'>None this session</li>";
+      .join("");
+    const events =
+      p.monitoring.recent_events
+        .map(
+          (ev) =>
+            `<li><span>${esc(ev.type)} (${esc(ev.duration_s)}s)${ev.open ? " · ongoing" : ""}</span><span class="time">${esc(ev.start)}</span></li>`
+        )
+        .join("") || "<li class='fine'>None this session</li>";
+    const initial = esc((p.identity.name || "?").charAt(0).toUpperCase());
+    const today =
+      cap(p.attendance.today_status) +
+      (p.attendance.recognition_time ? " · " + p.attendance.recognition_time : "");
     panelBody.innerHTML = `
-      <h2>${p.identity.name}</h2>
-      ${p.identity.photo ? `<img src="${p.identity.photo}" style="width:100%;border-radius:8px;margin-bottom:10px">` : ""}
-      ${row("Student ID", p.identity.student_id)}
-      ${row("Program", p.academic.program || "—")}
-      ${row("Semester / section", p.academic.semester_section || "—")}
-      ${row("Today", p.attendance.today_status + (p.attendance.recognition_time ? " @ " + p.attendance.recognition_time : ""))}
-      ${row("Attendance %", p.attendance.percentage + "%")}
-      <h2 style="margin-top:14px">Recent attendance</h2>
-      <ul>${hist || "<li class='hint'>No history</li>"}</ul>
-      <h2>Recent monitoring events</h2>
-      <ul>${events}</ul>
-      <p class="hint">Excluded by default: ${p.excluded_by_default.join(", ")}.</p>
+      <div class="sidepanel__who">
+        <span class="avatar avatar--lg">${p.identity.photo ? `<img src="${esc(p.identity.photo)}" alt="">` : initial}</span>
+        <div><h3 class="sidepanel__name">${esc(p.identity.name)}</h3><p class="fine num">${esc(p.identity.student_id)}</p></div>
+      </div>
+      <dl class="kv">
+        ${row("Program", p.academic.program || "—")}
+        ${row("Semester / section", p.academic.semester_section || "—")}
+        ${row("This session", today)}
+        ${row("Attendance rate", p.attendance.percentage + "%")}
+      </dl>
+      <div><h3>Recent attendance</h3><ul class="mini-list">${hist || "<li class='fine'>No history</li>"}</ul></div>
+      <div><h3>Recent monitoring events</h3><ul class="mini-list">${events}</ul></div>
+      <p class="fine">Excluded by default: ${esc(p.excluded_by_default.join(", "))}.</p>
     `;
   }
 
@@ -142,14 +210,15 @@
       .then((r) => r.json())
       .then((d) => {
         tracks = d.tracks || [];
-        fpsEl.textContent = "fps: " + (d.fps || 0).toFixed(1);
-        stateEl.textContent = "pipeline: " + (d.running ? "running" : "stopped");
-        errEl.textContent = d.error || "";
-        draw();
-        if (selectedStudent) {
-          const still = tracks.find((t) => t.student_id === selectedStudent.id);
-          if (!still) { /* keep last profile visible */ }
+        fpsEl.textContent = (d.fps || 0).toFixed(1) + " fps";
+        if (d.running) setState("running", "Camera running");
+        else if (stateEl.dataset.state !== "starting" || Date.now() - startingSince > 8000) {
+          setState("stopped", "Camera stopped");
         }
+        setError(d.error);
+        stage.classList.toggle("is-live", !!(d.running && feed.getAttribute("src")));
+        setCounts(tracks);
+        draw();
       })
       .catch(() => {});
   }

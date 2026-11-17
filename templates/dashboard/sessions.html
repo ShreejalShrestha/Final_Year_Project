@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% load people %}
+{% block title %}Sessions{% endblock %}
+{% block crumbs %}<li aria-current="page">Sessions</li>{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Sessions</h1>
+    <p class="page-head__sub">Manage your classroom sessions, monitor attendance, and review recent activity.</p>
+  </div>
+  <div class="page-head__actions">
+    <a class="btn" href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="plus" %}New session</a>
+  </div>
+</header>
+
+<dl class="stats" aria-label="Session summary">
+  <div class="stat{% if totals.active %} stat--live{% endif %}">
+    <dt class="stat__label">{% include "includes/icon.html" with name="radio" class="icon--sm" %}Active</dt>
+    <dd class="stat__value">{{ totals.active }}</dd>
+    <dd class="stat__hint">Recording attendance now</dd>
+  </div>
+  <div class="stat">
+    <dt class="stat__label">{% include "includes/icon.html" with name="calendar" class="icon--sm" %}Upcoming</dt>
+    <dd class="stat__value">{{ totals.scheduled }}</dd>
+    <dd class="stat__hint">Scheduled, not started</dd>
+  </div>
+  <div class="stat">
+    <dt class="stat__label">{% include "includes/icon.html" with name="circle-check" class="icon--sm" %}Completed</dt>
+    <dd class="stat__value">{{ totals.closed }}</dd>
+    <dd class="stat__hint">Closed sessions</dd>
+  </div>
+  <div class="stat">
+    <dt class="stat__label">{% include "includes/icon.html" with name="users" class="icon--sm" %}Present today</dt>
+    <dd class="stat__value">{{ present_today }}</dd>
+    <dd class="stat__hint">Attendance marks, today’s sessions</dd>
+  </div>
+</dl>
+
+<section class="card card--flush" aria-label="Session list">
+  <nav class="tabs" aria-label="Filter sessions by status">
+    <a class="tab" href="{% url 'dashboard:sessions' %}{% if q %}?q={{ q|urlencode }}{% endif %}"{% if not status %} aria-current="page"{% endif %}>All <span class="tab__count">{{ totals.total }}</span></a>
+    <a class="tab" href="?status=active{% if q %}&amp;q={{ q|urlencode }}{% endif %}"{% if status == 'active' %} aria-current="page"{% endif %}>Active <span class="tab__count">{{ totals.active }}</span></a>
+    <a class="tab" href="?status=scheduled{% if q %}&amp;q={{ q|urlencode }}{% endif %}"{% if status == 'scheduled' %} aria-current="page"{% endif %}>Upcoming <span class="tab__count">{{ totals.scheduled }}</span></a>
+    <a class="tab" href="?status=closed{% if q %}&amp;q={{ q|urlencode }}{% endif %}"{% if status == 'closed' %} aria-current="page"{% endif %}>Completed <span class="tab__count">{{ totals.closed }}</span></a>
+  </nav>
+
+  <form class="toolbar" method="get" role="search">
+    {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+    <div class="search">
+      {% include "includes/icon.html" with name="search" %}
+      <label class="sr-only" for="session-search">Search sessions</label>
+      <input id="session-search" type="search" name="q" value="{{ q }}" placeholder="Search by class, code or teacher" autocomplete="off">
+    </div>
+    <button type="submit" class="btn btn--secondary">Search</button>
+    {% if filtered %}<a class="btn btn--ghost" href="{% url 'dashboard:sessions' %}">Clear</a>{% endif %}
+    <span class="toolbar__spacer"></span>
+    <span class="toolbar__meta" aria-live="polite">{{ page.paginator.count }} session{{ page.paginator.count|pluralize }}</span>
+  </form>
+
+  {% if page.object_list %}
+  <div class="table-scroll">
+    <table class="table table--stack">
+      <thead>
+        <tr>
+          <th scope="col">Class</th>
+          <th scope="col">Date and time</th>
+          <th scope="col" class="col-teacher">Teacher</th>
+          <th scope="col">Status</th>
+          <th scope="col">Attendance</th>
+          <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in page.object_list %}
+        <tr{% if s.is_active %} class="is-live"{% endif %}>
+          <td class="cell-primary">
+            <div class="cell-title">{{ s.course_class.name }}</div>
+            <div class="cell-sub">{% if s.course_class.code %}{{ s.course_class.code }}{% endif %}{% if s.course_class.code and s.course_class.semester_section %} · {% endif %}{{ s.course_class.semester_section }}<span class="teacher-inline"> · {{ s.teacher|person }}</span></div>
+          </td>
+          <td data-label="Date" class="nowrap">
+            <div>
+              <div>{{ s.date|date:"D, j M Y" }}</div>
+              <div class="cell-sub num">
+                {% if s.status == 'closed' and s.started_at and s.ended_at %}{{ s.started_at|time:"H:i" }} – {{ s.ended_at|time:"H:i" }}
+                {% elif s.started_at %}Started {{ s.started_at|time:"H:i" }}
+                {% else %}Not started{% endif %}
+              </div>
+            </div>
+          </td>
+          <td data-label="Teacher" class="col-teacher">{{ s.teacher|person:"—" }}</td>
+          <td data-label="Status">{% include "includes/status_badge.html" with status=s.status %}</td>
+          <td data-label="Attendance" class="num nowrap">
+            {% if s.status == 'scheduled' %}<span class="muted">—</span>
+            {% else %}<div><a href="{% url 'attendance:session' s.pk %}">{{ s.present_count }} present</a>{% if s.status == 'closed' %}<div class="cell-sub">{{ s.event_count }} observed event{{ s.event_count|pluralize }}</div>{% endif %}</div>{% endif %}
+          </td>
+          <td class="col-actions cell-actions-td">
+            <div class="cell-actions">
+              {% if s.is_active %}
+                <a class="btn btn--sm" href="{% url 'dashboard:live' s.pk %}">{% include "includes/icon.html" with name="radio" class="icon--sm" %}Open live view</a>
+              {% elif s.status == 'scheduled' %}
+                <a class="btn btn--sm btn--secondary" href="{% url 'dashboard:live' s.pk %}">Open session</a>
+              {% else %}
+                <a class="btn btn--sm btn--secondary" href="{% url 'attendance:session' s.pk %}">View attendance</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page.has_other_pages %}
+  <nav class="pager" aria-label="Pagination">
+    <span class="num">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    <span class="pager__links">
+      {% if page.has_previous %}<a class="btn btn--sm btn--secondary" href="?{% if carried_qs %}{{ carried_qs }}&amp;{% endif %}page={{ page.previous_page_number }}">{% include "includes/icon.html" with name="chevron-left" class="icon--sm" %}Previous</a>{% endif %}
+      {% if page.has_next %}<a class="btn btn--sm btn--secondary" href="?{% if carried_qs %}{{ carried_qs }}&amp;{% endif %}page={{ page.next_page_number }}">Next{% include "includes/icon.html" with name="chevron-right" class="icon--sm" %}</a>{% endif %}
+    </span>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty">
+    {% if q %}
+      <span class="empty__icon">{% include "includes/icon.html" with name="search" %}</span>
+      <h2 class="empty__title">No sessions match “{{ q }}”</h2>
+      <p class="empty__body">Check the spelling, or search by a class name, class code or teacher.</p>
+      <a class="btn btn--secondary" href="{% url 'dashboard:sessions' %}">Clear search</a>
+    {% elif status == 'active' %}
+      <span class="empty__icon">{% include "includes/icon.html" with name="radio" %}</span>
+      <h2 class="empty__title">No active sessions</h2>
+      <p class="empty__body">A session appears here once it is activated and recording attendance.</p>
+    {% elif status == 'scheduled' %}
+      <span class="empty__icon">{% include "includes/icon.html" with name="calendar" %}</span>
+      <h2 class="empty__title">No upcoming sessions</h2>
+      <p class="empty__body">Sessions you schedule and have not started yet will appear here.</p>
+      <a class="btn" href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="plus" %}New session</a>
+    {% elif status == 'closed' %}
+      <span class="empty__icon">{% include "includes/icon.html" with name="clipboard" %}</span>
+      <h2 class="empty__title">No completed sessions yet</h2>
+      <p class="empty__body">Your completed classroom sessions will appear here.</p>
+    {% else %}
+      <span class="empty__icon">{% include "includes/icon.html" with name="calendar" %}</span>
+      <h2 class="empty__title">No sessions yet</h2>
+      <p class="empty__body">Create a session for one of your classes to start recording attendance.</p>
+      <a class="btn" href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="plus" %}New session</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

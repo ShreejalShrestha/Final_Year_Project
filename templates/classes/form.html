@@ -1,10 +1,27 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
+{% block crumbs %}
+  {% if kind == "session" %}<li><a href="{% url 'dashboard:sessions' %}">Sessions</a></li>
+  {% else %}<li><a href="{% url 'classes:list' %}">Classes</a></li>{% endif %}
+  <li aria-current="page">{{ title }}</li>
+{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width:520px">
-  <h1>{{ title }}</h1>
-  <form method="post">{% csrf_token %}{{ form.as_p }}
-    <button class="btn" type="submit">Save</button>
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ title }}</h1>
+    <p class="page-head__sub">{% if kind == "session" %}Choose the class and date. You can activate the session from its live view.{% else %}Add a course you teach. You can schedule sessions for it afterwards.{% endif %}</p>
+  </div>
+</header>
+
+<div class="card form-card">
+  <form class="card__body form" method="post" novalidate>
+    {% csrf_token %}
+    {% include "includes/form_fields.html" %}
+    <div class="form__actions">
+      <button class="btn" type="submit">{% if kind == "session" %}Create session{% else %}Create class{% endif %}</button>
+      <a class="btn btn--secondary" href="{% if kind == 'session' %}{% url 'dashboard:sessions' %}{% else %}{% url 'classes:list' %}{% endif %}">Cancel</a>
+    </div>
   </form>
 </div>
 {% endblock %}

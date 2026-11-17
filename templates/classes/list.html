@@ -1,38 +1,48 @@
 {% extends "base.html" %}
+{% load people %}
 {% block title %}Classes{% endblock %}
+{% block crumbs %}<li aria-current="page">Classes</li>{% endblock %}
+
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:center">
-  <h1>Classes &amp; sessions</h1>
-  <div style="display:flex;gap:8px">
-    <a class="btn secondary" href="{% url 'classes:create' %}">New class</a>
-    <a class="btn" href="{% url 'classes:session_create' %}">New session</a>
+<header class="page-head">
+  <div>
+    <h1 class="page-head__title">Classes</h1>
+    <p class="page-head__sub">The courses you teach. Schedule a session from any class to start taking attendance.</p>
+  </div>
+  <div class="page-head__actions">
+    <a class="btn btn--secondary" href="{% url 'classes:create' %}">{% include "includes/icon.html" with name="plus" %}New class</a>
+    <a class="btn" href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="calendar" %}New session</a>
+  </div>
+</header>
+
+{% if classes %}
+<ul class="class-grid">
+  {% for c in classes %}
+  <li class="card class-card">
+    <div class="class-card__top">
+      <h2 class="class-card__name">{{ c.name }}</h2>
+      {% if c.code %}<span class="badge badge--plain">{{ c.code }}</span>{% endif %}
+    </div>
+    <ul class="class-card__meta">
+      {% if c.program %}<li>{% include "includes/icon.html" with name="book" %}{{ c.program }}</li>{% endif %}
+      {% if c.semester_section %}<li>{% include "includes/icon.html" with name="users" %}{{ c.semester_section }}</li>{% endif %}
+      <li>{% include "includes/icon.html" with name="user" %}{{ c.teacher|person:"No teacher assigned" }}</li>
+    </ul>
+    <div class="class-card__foot">
+      <span class="num">{{ c.session_count }} session{{ c.session_count|pluralize }}</span>
+      <a class="btn btn--sm btn--secondary" href="{% url 'classes:session_create' %}?course_class={{ c.pk }}">{% include "includes/icon.html" with name="plus" class="icon--sm" %}Schedule session</a>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <span class="empty__icon">{% include "includes/icon.html" with name="book" %}</span>
+    <h2 class="empty__title">No classes yet</h2>
+    <p class="empty__body">Create a class first, then schedule sessions for it.</p>
+    <a class="btn" href="{% url 'classes:create' %}">{% include "includes/icon.html" with name="plus" %}New class</a>
   </div>
 </div>
-
-<div class="card">
-  <h2>Classes</h2>
-  <table>
-    <thead><tr><th>Name</th><th>Code</th><th>Program</th><th>Sem/Section</th><th>Teacher</th></tr></thead>
-    <tbody>
-      {% for c in classes %}
-      <tr><td>{{ c.name }}</td><td>{{ c.code }}</td><td>{{ c.program }}</td>
-        <td>{{ c.semester_section }}</td><td>{{ c.teacher.username|default:"—" }}</td></tr>
-      {% empty %}<tr><td colspan="5" class="hint">No classes yet.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<div class="card">
-  <h2>Recent sessions</h2>
-  <table>
-    <thead><tr><th>Class</th><th>Date</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-      {% for s in sessions %}
-      <tr><td>{{ s.course_class.name }}</td><td>{{ s.date }}</td>
-        <td><span class="pill {% if s.is_active %}ok{% endif %}">{{ s.get_status_display }}</span></td>
-        <td><a href="{% url 'dashboard:live' s.pk %}">live view →</a></td></tr>
-      {% empty %}<tr><td colspan="4" class="hint">No sessions yet.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-</div>
+{% endif %}
 {% endblock %}

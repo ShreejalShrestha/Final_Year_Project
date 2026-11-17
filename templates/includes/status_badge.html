@@ -1,0 +1,4 @@
+{# Expects `status` = a ClassSession status value. #}
+{% if status == "active" %}<span class="badge badge--live"><span class="badge__dot" aria-hidden="true"></span>Active</span>
+{% elif status == "scheduled" %}<span class="badge badge--scheduled"><span class="badge__dot" aria-hidden="true"></span>Scheduled</span>
+{% else %}<span class="badge badge--done"><span class="badge__dot" aria-hidden="true"></span>Completed</span>{% endif %}

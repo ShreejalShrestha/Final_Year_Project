@@ -1,42 +1,92 @@
 {% extends "base.html" %}
 {% block title %}{{ student.full_name }}{% endblock %}
-{% block content %}
-<h1>{{ student.full_name }} <span class="hint">{{ student.student_id }}</span></h1>
-<div class="card">
-  <p><strong>Program:</strong> {{ student.program|default:"—" }}</p>
-  <p><strong>Semester / section:</strong> {{ student.semester_section|default:"—" }}</p>
-  <p><strong>Consent:</strong>
-    {% if student.consent_given %}<span class="pill ok">recorded {{ student.consent_recorded_at }}</span>
-    {% else %}<span class="pill warn">not recorded</span>{% endif %}</p>
-  <p><strong>Enrolled for recognition:</strong> {{ student.is_enrolled|yesno:"yes,no" }}</p>
-  {% if student.is_enrolled %}
-  <p class="hint">Ready for recognition. Extra photos are optional — only add them if this student is often shown as "Unknown".</p>
-  <a class="btn" href="{% url 'students:enroll' student.pk %}">Add more photos (optional)</a>
-  {% else %}
-  <a class="btn" href="{% url 'students:enroll' student.pk %}">Add face photos</a>
-  {% endif %}
-</div>
+{% block crumbs %}
+  <li><a href="{% url 'students:list' %}">Students</a></li>
+  <li aria-current="page">{{ student.full_name }}</li>
+{% endblock %}
 
-<div class="card">
-  <h2>Face templates ({{ embeddings|length }})</h2>
-  <table>
-    <thead><tr><th>Added</th><th>Detection score</th><th>Model</th><th></th></tr></thead>
-    <tbody>
-      {% for e in embeddings %}
-      <tr>
-        <td>{{ e.created_at }}</td>
-        <td>{{ e.det_score|floatformat:3 }}</td>
-        <td>{{ e.model_name }}</td>
-        <td>
-          <form method="post" action="{% url 'students:embedding_delete' student.pk e.pk %}">
-            {% csrf_token %}<button class="link">delete</button>
-          </form>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="4" class="hint">No templates yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% block content %}
+<header class="page-head">
+  <div class="person">
+    <span class="avatar avatar--lg" aria-hidden="true">{% if student.profile_image %}<img src="{{ student.profile_image.url }}" alt="">{% else %}{{ student.full_name|slice:":1"|upper }}{% endif %}</span>
+    <div>
+      <h1 class="page-head__title">{{ student.full_name }}</h1>
+      <p class="page-head__sub num">{{ student.student_id }}{% if not student.is_active %} · Inactive{% endif %}</p>
+    </div>
+  </div>
+  {% if is_app_admin %}
+  <div class="page-head__actions">
+    <a class="btn" href="{% url 'students:enroll' student.pk %}">{% include "includes/icon.html" with name="upload" %}{% if student.is_enrolled %}Add more photos{% else %}Add face photos{% endif %}</a>
+  </div>
+  {% endif %}
+</header>
+
+<div class="profile">
+  <section class="card card--flush" aria-labelledby="details">
+    <div class="card__head"><h2 id="details" class="card__title">Details</h2></div>
+    <dl class="kv card__body">
+      <div class="kv__row"><dt>Program</dt><dd>{{ student.program|default:"—" }}</dd></div>
+      <div class="kv__row"><dt>Semester / section</dt><dd>{{ student.semester_section|default:"—" }}</dd></div>
+      <div class="kv__row"><dt>Consent</dt>
+        <dd>{% if student.consent_given %}<span class="badge badge--ok">Recorded</span>{% if student.consent_recorded_at %}<span class="fine num block">{{ student.consent_recorded_at|date:"j M Y, H:i" }}</span>{% endif %}{% else %}<span class="badge badge--warn">Not recorded</span>{% endif %}</dd></div>
+      <div class="kv__row"><dt>Recognition</dt>
+        <dd>{% if student.is_enrolled %}<span class="badge badge--ok">Ready</span>{% else %}<span class="badge badge--warn">Not ready</span>{% endif %}</dd></div>
+    </dl>
+  </section>
+
+  <div class="stack">
+    {% if student.is_enrolled %}
+    <div class="alert alert--success">{% include "includes/icon.html" with name="circle-check" %}<p>Ready for recognition. Extra photos are optional — add them only if this student is often shown as “Unknown”.</p></div>
+    {% else %}
+    <div class="alert alert--warning">{% include "includes/icon.html" with name="alert" %}<p>Not ready for recognition yet. {% if not student.consent_given %}Consent is not recorded. {% endif %}{% if not embeddings %}Add at least one clear face photo.{% endif %}</p></div>
+    {% endif %}
+
+    <section class="card card--flush" aria-labelledby="templates">
+      <div class="card__head">
+        <div>
+          <h2 id="templates" class="card__title">Face templates</h2>
+          <p class="card__sub">{{ embeddings|length }} stored</p>
+        </div>
+      </div>
+      {% if embeddings %}
+      <div class="table-scroll">
+        <table class="table table--stack">
+          <thead>
+            <tr>
+              <th scope="col">Added</th>
+              <th scope="col">Detection score</th>
+              <th scope="col">Model</th>
+              {% if is_app_admin %}<th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in embeddings %}
+            <tr>
+              <td class="cell-primary num">{{ e.created_at|date:"j M Y, H:i" }}</td>
+              <td data-label="Detection score" class="num">{{ e.det_score|floatformat:3 }}</td>
+              <td data-label="Model">{{ e.model_name }}</td>
+              {% if is_app_admin %}
+              <td class="col-actions cell-actions-td">
+                <form class="inline-form" method="post" action="{% url 'students:embedding_delete' student.pk e.pk %}" data-confirm="Delete this face template? Recognition for this student may become less reliable.">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn--sm btn--danger">{% include "includes/icon.html" with name="trash" class="icon--sm" %}Delete</button>
+                </form>
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty empty--compact">
+        <span class="empty__icon">{% include "includes/icon.html" with name="camera" %}</span>
+        <h3 class="empty__title">No face templates yet</h3>
+        <p class="empty__body">Templates are created from clear face photos and are what attendance recognition compares against.</p>
+        {% if is_app_admin %}<a class="btn" href="{% url 'students:enroll' student.pk %}">{% include "includes/icon.html" with name="upload" %}Add face photos</a>{% endif %}
+      </div>
+      {% endif %}
+    </section>
+  </div>
 </div>
 {% endblock %}
