@@ -24,8 +24,9 @@ class PipelineConfig:
     vote_window: int = 20                    # frames of identity history per track
     min_votes: int = 6                       # agreeing votes before an identity sticks
 
-    # --- Liveness: trained screen/print classifier AND complete blink ------
+    # --- Liveness: trained screen/print classifier; optional blink challenge
     liveness_enabled: bool = True
+    liveness_require_blink: bool = False  # passive monitoring must not depend on sampled blinks
     liveness_real_threshold: float = 0.90
     liveness_min_hits: int = 3             # consecutive classifier passes
     liveness_score_max_age: float = 0.75  # seconds; stale scores cannot count

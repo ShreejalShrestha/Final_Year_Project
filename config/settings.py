@@ -157,6 +157,8 @@ CV_PIPELINE = {
     "VIDEO_SOURCE": os.getenv("CV_VIDEO_SOURCE", "0"),
     "MODEL_NAME": os.getenv("CV_MODEL_NAME", ""),          # "" = config default (buffalo_s)
     "PROCESS_EVERY_N": os.getenv("CV_PROCESS_EVERY_N", ""),  # "" = config default
+    "LIVENESS_REAL_THRESHOLD": float(os.getenv("CV_LIVENESS_REAL_THRESHOLD", "0.90")),
+    "LIVENESS_REQUIRE_BLINK": os.getenv("CV_LIVENESS_REQUIRE_BLINK", "false").lower() == "true",
     "RECOGNITION_THRESHOLD": float(os.getenv("CV_RECOGNITION_THRESHOLD", "0.35")),
     "MODEL_DIR": str(BASE_DIR / os.getenv("CV_MODEL_DIR", "cv_pipeline/models")),
     "CALIBRATION_FILE": (str(BASE_DIR / os.environ["CV_CALIBRATION_FILE"])

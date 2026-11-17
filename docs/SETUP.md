@@ -115,10 +115,11 @@ loop per worker — out of scope for the prototype (one classroom, one camera).
 
 ## Phone-photo / replay rejection
 
-Monitoring now requires MiniFASNetV2 anti-spoof classification **and** a complete
-open/closed/open blink before a track is counted or attendance is marked.
-Landmark movement alone never establishes liveness. Keep the face in view and
-blink naturally; another blink is required every 15 seconds. Faces smaller than
+Monitoring requires repeated MiniFASNetV2 anti-spoof classification before a
+track is counted or attendance is marked. A blink is not required by default:
+sampled landmarks can miss natural blinks and block real users. Landmark motion
+alone never establishes liveness. An explicit blink challenge can be enabled
+with `CV_LIVENESS_REQUIRE_BLINK=true` (then repeated every 15 seconds). Faces smaller than
 60 pixels on either side are withheld because the classifier needs useful detail.
 Landmarks run every processed frame by default to capture short blinks.
 
@@ -144,3 +145,10 @@ screen brightness and distances. Record spoof acceptance and real-person rejecti
 before adjusting thresholds. Unit tests and successful model inference do not
 establish accuracy on your camera. RGB-only classification can still be fooled;
 this change does not guarantee rejection of every screen or replay.
+
+The server logs each visible track's anti-spoof real score, threshold and face
+size at startup and every 30 processed frames. If a real face is still blocked,
+use these readings to distinguish low classifier scores from insufficient face
+resolution. `CV_LIVENESS_REAL_THRESHOLD` overrides the default 0.90 threshold;
+calibrate against both real and phone-photo clips before lowering it. Restart
+the server and monitoring session after changing these environment variables.

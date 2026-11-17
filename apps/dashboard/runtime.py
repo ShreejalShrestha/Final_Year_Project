@@ -25,6 +25,8 @@ def _make_config() -> PipelineConfig:
     conf = settings.CV_PIPELINE
     kwargs = dict(
         device=conf["DEVICE"],
+        liveness_real_threshold=conf.get("LIVENESS_REAL_THRESHOLD", 0.90),
+        liveness_require_blink=conf.get("LIVENESS_REQUIRE_BLINK", False),
         recognition_threshold=conf["RECOGNITION_THRESHOLD"],
         model_dir=conf["MODEL_DIR"],
         # The dashboard draws boxes on a clickable canvas; don't burn them into the stream too.

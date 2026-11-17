@@ -138,6 +138,14 @@ class MonitoringEngine:
                 except Exception:
                     logger.exception("Anti-spoof inference failed; rejecting face")
                     real_score = 0.0
+            if real_score is not None and (self._frame_no == 1 or self._frame_no % 30 == 0):
+                box_size = np.asarray(face_det.bbox)[2:] - np.asarray(face_det.bbox)[:2]
+                logger.info(
+                    "Liveness track=%s real_score=%.3f threshold=%.3f face_pixels=%sx%s min_pixels=%s blink_required=%s",
+                    tid, real_score, self.cfg.liveness_real_threshold,
+                    int(box_size[0]), int(box_size[1]), self.cfg.liveness_min_face_pixels,
+                    self.cfg.liveness_require_blink,
+                )
             if not self.liveness.observe(
                 tid,
                 blink=getattr(lm_sig, "blink", None) if run_lm and face_visible else None,

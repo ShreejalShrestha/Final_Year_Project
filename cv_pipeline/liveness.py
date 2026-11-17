@@ -1,4 +1,4 @@
-"""Require fresh classifier evidence and a complete blink; motion never proves life."""
+"""Require fresh classifier evidence; a blink challenge is optional."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -87,7 +87,8 @@ class LivenessGate:
                 st.blink_started = now
         st.live = bool(face_visible and st.hits >= cfg.liveness_min_hits
                        and now - st.score_at <= cfg.liveness_score_max_age
-                       and now - st.blink_at <= cfg.liveness_recheck_seconds)
+                       and (not cfg.liveness_require_blink
+                            or now - st.blink_at <= cfg.liveness_recheck_seconds))
         return st.live
 
     def prune(self, max_age):

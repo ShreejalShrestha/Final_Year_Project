@@ -7,7 +7,7 @@ from cv_pipeline.liveness import LivenessGate
 
 class LivenessTests(SimpleTestCase):
     def setUp(self):
-        self.gate = LivenessGate(PipelineConfig())
+        self.gate = LivenessGate(PipelineConfig(liveness_require_blink=True))
 
     def feed(self, blink, t, score=0.99, **kwargs):
         return self.gate.observe(1, blink=blink, real_score=score, timestamp=t, **kwargs)
@@ -71,3 +71,24 @@ class LivenessTests(SimpleTestCase):
 
     def test_disabled_gate(self):
         self.assertTrue(LivenessGate(PipelineConfig(liveness_enabled=False)).observe(1))
+
+
+class PassiveLivenessTests(SimpleTestCase):
+    def test_real_face_without_landmarks_or_blinks_passes(self):
+        gate = LivenessGate(PipelineConfig())
+        for i in range(20):
+            live = gate.observe(1, real_score=0.99, timestamp=i * 0.1)
+            self.assertEqual(live, i >= 2)
+        # No periodic blink expiry in passive monitoring.
+        for i in range(20, 200):
+            self.assertTrue(gate.observe(1, real_score=0.99, timestamp=i * 0.1))
+
+    def test_blink_cannot_bypass_spoof_and_scores_must_be_fresh(self):
+        gate = LivenessGate(PipelineConfig())
+        for i in range(10):
+            self.assertFalse(gate.observe(1, blink=0.9 if i % 2 else 0.05,
+                                          real_score=0.1, timestamp=i * 0.1))
+        for i in range(10, 13):
+            gate.observe(1, real_score=0.99, timestamp=i * 0.1)
+        self.assertTrue(gate.is_live(1))
+        self.assertFalse(gate.observe(1, timestamp=3))
