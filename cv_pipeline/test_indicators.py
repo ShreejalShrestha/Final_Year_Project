@@ -175,7 +175,8 @@ class RobustIndicatorTests(SimpleTestCase):
 
 class LandmarkIntegrationTests(SimpleTestCase):
     def make_engine(self):
-        engine = MonitoringEngine(PipelineConfig(landmark_every_n=1, burn_in_overlay=False),
+        engine = MonitoringEngine(PipelineConfig(landmark_every_n=1, burn_in_overlay=False,
+                                                 liveness_enabled=False),
                                   Gallery({}), {}, Mock(), enable_landmarks=False)
         engine._landmarker = Mock()
         engine._landmarker.analyze.return_value = [FaceSignal(

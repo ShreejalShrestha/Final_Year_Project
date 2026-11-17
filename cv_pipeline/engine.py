@@ -16,6 +16,7 @@ from .config import PipelineConfig
 from .detection import detect_faces
 from .indicators import FrameSignals, IndicatorEngine
 from .landmarks import FaceLandmarkAnalyzer, match_signals_to_tracks
+from .liveness import LivenessGate
 from .recognition import Gallery, TrackIdentity
 from .tracking import ByteTracker
 
@@ -58,6 +59,7 @@ class MonitoringEngine:
 
         self.tracker = ByteTracker(cfg)
         self.indicators = IndicatorEngine(cfg)
+        self.liveness = LivenessGate(cfg)
         self._identities: dict[int, TrackIdentity] = {}
         self._centroids: dict[int, tuple[float, float]] = {}
         self._open_events: dict[tuple[int, str], int] = {}
@@ -114,8 +116,23 @@ class MonitoringEngine:
         signal_rows: list[dict] = []
         live_ids = set(track_boxes)
 
+        # Keep liveness through brief detector flicker; forget long-gone tracks.
+        self.liveness.prune(max_age=self.cfg.track_buffer + 5)
+
         for t in tracks:
             tid = t["track_id"]
+
+            # --- liveness: ignore faces that never blink or deform (photos) --
+            det_i = t.get("det_index")
+            face_det = detections[det_i] if det_i is not None and 0 <= det_i < len(detections) else None
+            lm_sig = signals_by_track.get(tid)
+            if not self.liveness.observe(
+                tid,
+                getattr(face_det, "kps", None),
+                getattr(lm_sig, "blink", None),
+            ):
+                continue
+
             self._seen_tracks.add(tid)
             box = t["tlbr"]
             cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0

@@ -24,6 +24,15 @@ class PipelineConfig:
     vote_window: int = 20                    # frames of identity history per track
     min_votes: int = 6                       # agreeing votes before an identity sticks
 
+    # --- Liveness (reject still photos) ----------------------------------
+    # A face is ignored until it blinks or its landmarks deform in a way a flat
+    # picture cannot. Set liveness_enabled=False to count every detected face.
+    liveness_enabled: bool = True
+    liveness_lag_frames: int = 6             # compare landmarks to N processed frames ago
+    liveness_nonrigid_thresh: float = 0.04   # affine-fit residual / inter-eye distance
+    liveness_min_hits: int = 3               # frames over the threshold before latching live
+    liveness_blink_swing: float = 0.30       # blink blendshape range that proves a real eye
+
     # --- Tracking --------------------------------------------------------
     track_high_thresh: float = 0.5
     track_low_thresh: float = 0.1
