@@ -111,3 +111,36 @@ python manage.py runserver
 For a shared demo, run with `--nothreading` disabled (default is threaded) and a
 single worker. `gunicorn`/`uwsgi` multi-worker deployments would run one camera
 loop per worker — out of scope for the prototype (one classroom, one camera).
+
+
+## Phone-photo / replay rejection
+
+Monitoring now requires MiniFASNetV2 anti-spoof classification **and** a complete
+open/closed/open blink before a track is counted or attendance is marked.
+Landmark movement alone never establishes liveness. Keep the face in view and
+blink naturally; another blink is required every 15 seconds. Faces smaller than
+60 pixels on either side are withheld because the classifier needs useful detail.
+Landmarks run every processed frame by default to capture short blinks.
+
+The approximately 1.7 MB ONNX file downloads automatically on first monitoring
+startup to `CV_MODEL_DIR/MiniFASNetV2.onnx`. For offline installation, download
+[the upstream ONNX release](https://github.com/yakhyo/face-anti-spoofing/releases/download/weights/MiniFASNetV2.onnx)
+and put it there. The model uses the existing ONNX Runtime dependency on CPU;
+no additional packages are required. Download/load errors stop startup with an
+error; inference errors reject the face rather than bypassing the gate.
+
+Implementation and weights originate from
+[yakhyo/face-anti-spoofing](https://github.com/yakhyo/face-anti-spoofing), based on
+[MiniVision Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing).
+The input is an 80x80 BGR float32 crop with 2.7x context, without RGB conversion
+or division by 255; real is output class 1. Defaults are in `PipelineConfig`.
+Three consecutive real scores >= 0.90 are required. A failed score revokes
+acceptance immediately; evidence older than 0.75 seconds cannot authorize a face.
+Already saved attendance is not automatically deleted when a track is revoked.
+
+Validate on consented clips from the deployment camera: real faces, stationary
+and tilted phone photos, prints, and replay videos, under different lighting,
+screen brightness and distances. Record spoof acceptance and real-person rejection
+before adjusting thresholds. Unit tests and successful model inference do not
+establish accuracy on your camera. RGB-only classification can still be fooled;
+this change does not guarantee rejection of every screen or replay.
