@@ -206,7 +206,8 @@
   }
 
   function poll() {
-    fetch(`/dashboard/session/${SID}/tracks/`)
+    if (document.hidden) return Promise.resolve();   // nothing to draw in a background tab
+    return fetch(`/dashboard/session/${SID}/tracks/`)
       .then((r) => r.json())
       .then((d) => {
         tracks = d.tracks || [];
@@ -223,7 +224,12 @@
       .catch(() => {});
   }
 
-  setInterval(poll, 600);
-  poll();
+  // Chain polls: the next request starts only after the previous one finished, so slow
+  // responses can't pile up. At ~10 Hz the overlay stays close to the 30 fps video; the old
+  // 600 ms interval made the boxes visibly lag behind the picture.
+  const POLL_MS = 100;
+  (function loop() {
+    poll().finally(() => setTimeout(loop, POLL_MS));
+  })();
   if (window.WORKER_RUNNING) startFeed();
 })();

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from typing import Protocol
 
@@ -13,7 +15,7 @@ import numpy as np
 
 from .annotate import draw_overlay
 from .config import PipelineConfig
-from .detection import detect_faces
+from .detection import detect_faces, embed_faces
 from .indicators import FrameSignals, IndicatorEngine
 from .landmarks import FaceLandmarkAnalyzer, match_signals_to_tracks
 from .liveness import LivenessGate
@@ -67,6 +69,8 @@ class MonitoringEngine:
         self._open_events: dict[tuple[int, str], int] = {}
         self._marked_students: set[int] = set()
         self._seen_tracks: set[int] = set()
+        self._last_embed: dict[int, int] = {}      # track id -> frame number of last embedding
+        self._pool: ThreadPoolExecutor | None = None
 
         self._landmarker = None
         if enable_landmarks:
@@ -77,11 +81,17 @@ class MonitoringEngine:
 
         self._last_t = time.monotonic()
         self._fps = 0.0
+        self._frame_times: deque[float] = deque(maxlen=30)   # wall-clock stamps of recent frames
         self._frame_no = 0
         self._sig_cache: dict[int, object] = {}
         self._sig_cache_time = 0.0
 
     # ------------------------------------------------------------------
+    def _landmark_pool(self) -> ThreadPoolExecutor:
+        if self._pool is None:
+            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="landmarks")
+        return self._pool
+
     def process(self, frame: np.ndarray, *, timestamp: float | None = None) -> FrameResult:
         # Recorded clips use video time so event durations do not depend on CPU speed.
         now = time.monotonic() if timestamp is None else timestamp
@@ -89,26 +99,34 @@ class MonitoringEngine:
         diag = float(np.hypot(w, h))
         self._frame_no += 1
 
-        detections = detect_faces(frame, self.cfg)
+        # MediaPipe landmarks are CPU-bound while detection and recognition run on the
+        # GPU, so start them first and join after tracking: the two overlap instead of
+        # their times adding up.
+        lm_due = (
+            self._landmarker is not None
+            and self._frame_no % max(1, self.cfg.landmark_every_n) == 0
+        )
+        lm_future = self._landmark_pool().submit(self._landmarker.analyze, frame) if lm_due else None
+
+        # Boxes only: embeddings are the costly part and are computed below, in one
+        # batch, for just the tracks that need them.
+        detections = detect_faces(frame, self.cfg, with_embeddings=False)
         tracks = self.tracker.update(detections)
 
         track_boxes = {t["track_id"]: np.array(t["tlbr"], dtype=np.float32) for t in tracks}
 
-        # MediaPipe is the second-heaviest step — run it every Nth processed
-        # frame and reuse the last result for the frames in between.
-        run_lm = (
-            self._landmarker is not None
-            and track_boxes
-            and self._frame_no % max(1, self.cfg.landmark_every_n) == 0
-        )
-        if run_lm:
+        run_lm = lm_due and bool(track_boxes)
+        if lm_future is not None:
             try:
-                face_signals = self._landmarker.analyze(frame)
+                face_signals = lm_future.result()
+            except Exception as exc:  # noqa: BLE001
+                face_signals = None
+                if run_lm:
+                    logger.debug("landmark analyze failed: %s", exc)
+                    self._sig_cache.clear()
+            if run_lm and face_signals is not None:
                 self._sig_cache = match_signals_to_tracks(track_boxes, face_signals)
                 self._sig_cache_time = now
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("landmark analyze failed: %s", exc)
-                self._sig_cache.clear()
         signals_by_track = {
             tid: s for tid, s in self._sig_cache.items()
             if tid in track_boxes and 0 <= now - self._sig_cache_time <= self.cfg.landmark_max_age_seconds
@@ -121,6 +139,8 @@ class MonitoringEngine:
         # Keep liveness through brief detector flicker; forget long-gone tracks.
         self.liveness.prune(max_age=self.cfg.track_buffer + 5)
 
+        # Pass A: liveness. Rejected tracks are dropped here and never embedded.
+        accepted: list[tuple[dict, object]] = []
         for t in tracks:
             tid = t["track_id"]
 
@@ -160,17 +180,39 @@ class MonitoringEngine:
                         self.cb.close_event(self._open_events.pop(key))
                 self._identities.pop(tid, None)
                 self._centroids.pop(tid, None)
+                self._last_embed.pop(tid, None)
                 continue
+            accepted.append((t, face_det))
 
+        # Batch-embed only tracks that need a recognition vote this frame: unlocked ones
+        # every frame (as before), locked ones just often enough to re-verify the label.
+        # With nobody enrolled there is nothing to match, so skip embedding altogether.
+        if len(self.gallery):
+            pending = []
+            for t, face_det in accepted:
+                if face_det is None or face_det.embedding is not None:
+                    continue
+                tid = t["track_id"]
+                ident = self._identities.get(tid)
+                since = self._frame_no - self._last_embed.get(tid, -(10 ** 9))
+                if ident is None or not ident.locked or since >= self.cfg.recognition_recheck_frames:
+                    pending.append((tid, face_det))
+            if pending:
+                embed_faces(frame, [d for _, d in pending], self.cfg)
+                for tid, _ in pending:
+                    self._last_embed[tid] = self._frame_no
+
+        # Pass B: recognition votes, attendance, movement, indicators.
+        for t, face_det in accepted:
+            tid = t["track_id"]
             self._seen_tracks.add(tid)
             box = t["tlbr"]
             cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
 
             # --- recognition -----------------------------------------
             ident = self._identities.setdefault(tid, TrackIdentity(self.cfg))
-            det_idx = t.get("det_index")
-            if det_idx is not None and det_idx < len(detections):
-                sid, sim = self.gallery.query(detections[det_idx].embedding)
+            if face_det is not None and (face_det.embedding is not None or not len(self.gallery)):
+                sid, sim = self.gallery.query(face_det.embedding)
                 was_locked = ident.locked
                 ident.add(sid, sim)
                 if ident.locked and not was_locked:
@@ -195,7 +237,7 @@ class MonitoringEngine:
             # --- indicator signals ---------------------------------
             sig = signals_by_track.get(tid)
             # A cached landmark must not override a current failed face detection.
-            face_visible = det_idx is not None and 0 <= det_idx < len(detections)
+            face_visible = face_det is not None
             if not face_visible:
                 sig = None
             fs = FrameSignals(
@@ -238,15 +280,18 @@ class MonitoringEngine:
             self._seen_tracks.discard(gone)
             self._identities.pop(gone, None)
             self._centroids.pop(gone, None)
+            self._last_embed.pop(gone, None)
             self._sig_cache.pop(gone, None)
 
         annotated = draw_overlay(frame.copy(), views) if self.cfg.burn_in_overlay else frame
 
         wall_now = time.monotonic()
-        dt = wall_now - self._last_t
         self._last_t = wall_now
-        if dt > 0:
-            self._fps = 0.9 * self._fps + 0.1 * (1.0 / dt)
+        # Frames per second over the last ~1 s. (Averaging per-frame 1/dt overstates the
+        # rate when a camera delivers frames in bursts, e.g. showing 35 fps on a 30 fps camera.)
+        self._frame_times.append(wall_now)
+        if len(self._frame_times) >= 2 and self._frame_times[-1] > self._frame_times[0]:
+            self._fps = (len(self._frame_times) - 1) / (self._frame_times[-1] - self._frame_times[0])
         return FrameResult(frame=annotated, track_views=views, fps=round(self._fps, 1),
                            num_tracks=len(views), signal_rows=signal_rows)
 
@@ -267,3 +312,6 @@ class MonitoringEngine:
             except Exception:  # noqa: BLE001
                 pass
         self._open_events.clear()
+        if self._pool is not None:
+            self._pool.shutdown(wait=False, cancel_futures=True)
+            self._pool = None

@@ -23,6 +23,9 @@ class PipelineConfig:
     recognition_threshold: float = 0.35     # cosine similarity to accept identity
     vote_window: int = 20                    # frames of identity history per track
     min_votes: int = 6                       # agreeing votes before an identity sticks
+    # Once an identity is locked, re-verify it only every N frames instead of embedding
+    # the face on every frame. Unlocked tracks are still embedded every frame.
+    recognition_recheck_frames: int = 6
 
     # --- Liveness: trained screen/print classifier; optional blink challenge
     liveness_enabled: bool = True
@@ -142,6 +145,8 @@ class PipelineConfig:
                 or self.forward_pitch_deg >= self.head_down_pitch_deg
                 or self.forward_pitch_deg >= self.head_up_pitch_deg):
             raise ValueError("Forward limits must be below away/down/up entry thresholds")
+        if self.recognition_recheck_frames < 1:
+            raise ValueError("recognition_recheck_frames must be at least 1")
         if self.landmark_max_age_seconds <= 0 or self.indicator_max_gap_seconds <= 0:
             raise ValueError("Freshness and observation gap limits must be positive")
         if self.restless_movement_norm >= self.high_movement_norm:

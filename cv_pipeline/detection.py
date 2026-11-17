@@ -66,7 +66,9 @@ class Detection:
     bbox: np.ndarray            # (4,) x1, y1, x2, y2
     det_score: float
     kps: np.ndarray             # (5, 2) five-point landmarks
-    embedding: np.ndarray       # (512,) L2-normalised ArcFace embedding
+    # (512,) L2-normalised ArcFace embedding. None until ``embed_faces`` fills it:
+    # embedding is the costly step, so the engine only does it for faces that need it.
+    embedding: np.ndarray | None = None
     yaw: float = 0.0            # degrees, + = turned to subject's left
     pitch: float = 0.0         # degrees, + = looking down
     roll: float = 0.0
@@ -129,7 +131,59 @@ def _coarse_pose_from_kps(kps: np.ndarray, bbox: np.ndarray) -> tuple[float, flo
     return yaw, pitch, roll
 
 
-def detect_faces(frame_bgr, cfg: PipelineConfig) -> list[Detection]:
+def _detect_boxes_only(frame_bgr, cfg: PipelineConfig) -> list[Detection]:
+    """Run only the SCRFD detector (boxes + 5 landmarks); embeddings stay ``None``."""
+    app = get_face_app(cfg)
+    bboxes, kpss = app.det_model.detect(frame_bgr, max_num=0, metric="default")
+    out: list[Detection] = []
+    if bboxes.shape[0] == 0 or kpss is None:
+        return out
+    for i in range(bboxes.shape[0]):
+        score = float(bboxes[i, 4])
+        if score < cfg.min_det_score:
+            continue
+        kps = np.asarray(kpss[i], dtype=np.float32)
+        bbox = np.asarray(bboxes[i, 0:4], dtype=np.float32)
+        yaw, pitch, roll = _coarse_pose_from_kps(kps, bbox)
+        out.append(Detection(bbox=bbox, det_score=score, kps=kps, yaw=yaw, pitch=pitch, roll=roll))
+    return out
+
+
+def embed_faces(frame_bgr, detections: list[Detection], cfg: PipelineConfig | None = None) -> None:
+    """Fill ``embedding`` for every detection that lacks one, in a single batched
+    ArcFace call (one GPU round-trip however many faces there are)."""
+    todo = [d for d in detections if d.embedding is None and d.kps is not None]
+    if not todo:
+        return
+    from insightface.utils import face_align
+
+    rec = get_face_app(cfg).models["recognition"]
+    size = rec.input_size[0]
+    crops = [face_align.norm_crop(frame_bgr, landmark=d.kps, image_size=size) for d in todo]
+    feats = np.asarray(rec.get_feat(crops), dtype=np.float32).reshape(len(todo), -1)
+    for det, vec in zip(todo, feats):
+        norm = float(np.linalg.norm(vec))
+        det.embedding = vec / norm if norm > 0 else vec
+
+
+def warm_up(cfg: PipelineConfig, max_batch: int = 4) -> None:
+    """Pay one-off GPU costs (CUDA context, per-shape setup) before the first real frame.
+
+    The recognition model takes ~50 ms the first time it sees each new batch size, which
+    would otherwise appear as a frame-rate stutter when the number of faces first changes.
+    """
+    app = get_face_app(cfg)
+    app.det_model.detect(np.zeros((480, 640, 3), dtype=np.uint8), max_num=0, metric="default")
+    rec = app.models.get("recognition")
+    if rec is not None:
+        size = rec.input_size[::-1]
+        for n in range(1, max_batch + 1):
+            rec.get_feat([np.zeros((*size, 3), dtype=np.uint8)] * n)
+
+
+def detect_faces(frame_bgr, cfg: PipelineConfig, with_embeddings: bool = True) -> list[Detection]:
+    if not with_embeddings:
+        return _detect_boxes_only(frame_bgr, cfg)
     app = get_face_app(cfg)
     out: list[Detection] = []
     for f in app.get(frame_bgr):

@@ -16,6 +16,7 @@ from django.db import close_old_connections
 
 from cv_pipeline.capture import VideoStream
 from cv_pipeline.config import PipelineConfig, load_calibration
+from cv_pipeline.detection import warm_up
 from cv_pipeline.engine import MonitoringEngine
 
 logger = logging.getLogger("apps.dashboard")
@@ -92,6 +93,8 @@ class PipelineWorker:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
+        self._frame_ready = threading.Condition(self._lock)   # signalled for every new frame
+        self._frame_seq = 0
         self.latest_jpeg: bytes | None = None
         self.latest_views: list[dict] = []
         self.fps: float = 0.0
@@ -133,6 +136,8 @@ class PipelineWorker:
             session = ClassSession.objects.get(pk=self.session_id)
             gallery, names = build_gallery(cfg)
             logger.info("Session %s: gallery has %d templates", self.session_id, len(gallery))
+            # Pay one-off GPU setup costs now, not as a stutter on the first live frames.
+            warm_up(cfg)
             engine = MonitoringEngine(
                 cfg, gallery, names, DjangoCallbacks(self.session_id),
                 session_active=session.is_active,
@@ -168,10 +173,12 @@ class PipelineWorker:
 
                 ok, buf = cv2.imencode(".jpg", result.frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if ok:
-                    with self._lock:
+                    with self._frame_ready:
                         self.latest_jpeg = buf.tobytes()
                         self.latest_views = result.track_views
                         self.fps = result.fps
+                        self._frame_seq += 1
+                        self._frame_ready.notify_all()
 
                 if frame_i % 150 == 0:
                     close_old_connections()
@@ -182,6 +189,16 @@ class PipelineWorker:
             logger.info("Pipeline %s stopped", self.session_id)
 
     # --- readers for the views -----------------------------------
+    def wait_for_frame(self, after_seq: int, timeout: float = 1.0):
+        """Block until a frame newer than ``after_seq`` exists; return ``(seq, jpeg)``.
+
+        Lets the MJPEG stream send each frame once, as soon as it is ready, instead of
+        polling on a timer (which capped the stream and re-sent duplicate frames).
+        """
+        with self._frame_ready:
+            self._frame_ready.wait_for(lambda: self._frame_seq != after_seq, timeout=timeout)
+            return self._frame_seq, self.latest_jpeg
+
     def snapshot(self):
         with self._lock:
             return self.latest_jpeg, list(self.latest_views), self.fps

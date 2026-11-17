@@ -163,16 +163,18 @@ def video_feed(request, session_id):
     boundary = "frame"
 
     def generate():
+        # Send each frame once, as soon as the pipeline publishes it. The old fixed
+        # sleep capped the stream at 20 fps and re-sent frames that hadn't changed.
+        seq = 0
         while worker.is_running:
-            jpeg, _, _ = worker.snapshot()
-            if jpeg is None:
-                time.sleep(0.1)
+            new_seq, jpeg = worker.wait_for_frame(seq, timeout=1.0)
+            if jpeg is None or new_seq == seq:
                 continue
+            seq = new_seq
             yield (
                 b"--" + boundary.encode() + b"\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
             )
-            time.sleep(1 / 20)
 
     resp = StreamingHttpResponse(
         generate(), content_type=f"multipart/x-mixed-replace; boundary={boundary}"

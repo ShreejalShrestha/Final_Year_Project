@@ -33,8 +33,17 @@ class AntiSpoofClassifier:
             finally:
                 if os.path.exists(tmp):
                     os.unlink(tmp)
-        # Small model: CPU avoids CUDA transfer overhead and GPU dependency.
-        self.session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        # Small model: CPU avoids CUDA transfer overhead and GPU dependency. An 80x80 input
+        # is far too little work to benefit from ONNX Runtime's default thread pool (one
+        # thread per logical core, busy-waiting between calls), and that pool competes with
+        # MediaPipe's for CPU while both run each frame. One quiet thread is faster overall.
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        self.session = ort.InferenceSession(
+            str(path), sess_options=options, providers=["CPUExecutionProvider"]
+        )
         inp = self.session.get_inputs()[0]
         if inp.shape != [1, 3, 80, 80] and inp.shape[1:] != [3, 80, 80]:
             raise ValueError(f"Unexpected MiniFASNet input shape: {inp.shape}")
