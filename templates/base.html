@@ -80,11 +80,12 @@
       {% if messages %}
       <div class="messages" role="status">
         {% for message in messages %}
-        <div class="alert alert--{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}">
+        <div class="alert alert--{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" data-toast{% if message.tags == 'success' or message.tags == 'info' or not message.tags %} data-toast-autodismiss{% endif %}>
           {% if message.tags == 'error' or message.tags == 'warning' %}{% include "includes/icon.html" with name="alert" %}
           {% elif message.tags == 'success' %}{% include "includes/icon.html" with name="circle-check" %}
           {% else %}{% include "includes/icon.html" with name="info" %}{% endif %}
           <p>{{ message }}</p>
+          <button type="button" class="alert__close" data-toast-close aria-label="Dismiss">{% include "includes/icon.html" with name="x" %}</button>
         </div>
         {% endfor %}
       </div>
@@ -96,6 +97,19 @@
     </main>
   </div>
 </div>
+
+<dialog class="modal" id="confirm-dialog" aria-labelledby="confirm-dialog-title">
+  <form method="dialog" class="modal__body">
+    <span class="modal__icon" aria-hidden="true">{% include "includes/icon.html" with name="alert" %}</span>
+    <h2 class="modal__title" id="confirm-dialog-title">Are you sure?</h2>
+    <p class="modal__text" id="confirm-dialog-text"></p>
+    <div class="modal__actions">
+      <button type="submit" value="cancel" class="btn btn--secondary">Cancel</button>
+      <button type="button" class="btn btn--danger-solid" id="confirm-dialog-ok">Confirm</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="{% static_v 'js/app.js' %}" defer></script>
 {% block scripts %}{% endblock %}
 </body>

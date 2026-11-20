@@ -152,7 +152,7 @@
   });
 
   function loadProfile(studentId) {
-    panelBody.innerHTML = "<p class='fine'>Loading student details…</p>";
+    panelBody.innerHTML = "<div class='loading-row'><span class='spinner' aria-hidden='true'></span><p class='fine'>Loading student details…</p></div>";
     fetch(`/dashboard/session/${SID}/student/${studentId}/`)
       .then((r) => {
         if (!r.ok) throw new Error(r.status);

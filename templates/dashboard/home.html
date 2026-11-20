@@ -14,65 +14,80 @@
   </div>
 </header>
 
-<dl class="stats" aria-label="Summary">
-  <div class="stat{% if totals.active %} stat--live{% endif %}">
-    <dt class="stat__label">{% include "includes/icon.html" with name="radio" class="icon--sm" %}Active sessions</dt>
-    <dd class="stat__value">{{ totals.active }}</dd>
-    <dd class="stat__hint">Recording attendance now</dd>
-  </div>
-  <div class="stat">
-    <dt class="stat__label">{% include "includes/icon.html" with name="calendar" class="icon--sm" %}Upcoming sessions</dt>
-    <dd class="stat__value">{{ totals.scheduled }}</dd>
-    <dd class="stat__hint">Scheduled, not started</dd>
-  </div>
-  <div class="stat">
-    <dt class="stat__label">{% include "includes/icon.html" with name="clipboard" class="icon--sm" %}Present today</dt>
-    <dd class="stat__value">{{ present_today }}</dd>
-    <dd class="stat__hint">Marked in today’s sessions</dd>
-  </div>
-  <div class="stat">
-    <dt class="stat__label">{% include "includes/icon.html" with name="users" class="icon--sm" %}Ready for recognition</dt>
-    <dd class="stat__value">{{ ready_students }}<span class="stat__of"> / {{ active_students }}</span></dd>
-    <dd class="stat__hint">Consent and a face template</dd>
-  </div>
-</dl>
+<div class="overview-top">
+  <section aria-labelledby="live-now">
+    <h2 id="live-now" class="sr-only">Active sessions</h2>
+    {% if active_sessions %}
+    {% with s=active_sessions.0 %}
+    <article class="hero-live">
+      <span class="hero-live__eyebrow"><span class="badge__dot" aria-hidden="true"></span>Live now</span>
+      <div class="hero-live__main">
+        <div>
+          <h3 class="hero-live__title">{{ s.course_class.name }}</h3>
+          <div class="hero-live__meta">
+            <span>{% include "includes/icon.html" with name="clock" %}{% if s.started_at %}Started {{ s.started_at|time:"H:i" }}{% else %}{{ s.date|date:"j M" }}{% endif %}</span>
+            <span>{% include "includes/icon.html" with name="users" %}{{ s.present_count }} present</span>
+            <span>{% include "includes/icon.html" with name="user" %}{{ s.teacher|person:"No teacher" }}</span>
+          </div>
+        </div>
+        <a class="btn" href="{% url 'dashboard:live' s.pk %}">{% include "includes/icon.html" with name="radio" %}Open live view</a>
+      </div>
+      {% if active_sessions|length > 1 %}
+      <div class="hero-live__more">
+        {% for other in active_sessions|slice:"1:4" %}
+        <a href="{% url 'dashboard:live' other.pk %}">
+          <span>{{ other.course_class.name }} · {{ other.present_count }} present</span>
+          {% include "includes/icon.html" with name="chevron-right" class="icon--sm" %}
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </article>
+    {% endwith %}
+    {% else %}
+    <article class="hero-live hero-live--idle">
+      <div class="hero-live--idle__text">
+        <span class="hero-live--idle__icon">{% include "includes/icon.html" with name="radio" %}</span>
+        <div>
+          <strong>No active session</strong>
+          <span>Start a scheduled session or create a new one to begin recording attendance.</span>
+        </div>
+      </div>
+      <a class="btn" href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="plus" %}New session</a>
+    </article>
+    {% endif %}
+  </section>
+
+  <section class="card metric-rail" aria-label="Today's figures">
+    <div class="metric-row">
+      <span class="metric-row__icon metric-row__icon--primary">{% include "includes/icon.html" with name="calendar" %}</span>
+      <div class="metric-row__text">
+        <p class="metric-row__label">Upcoming sessions</p>
+        <p class="metric-row__value">{{ totals.scheduled }}</p>
+      </div>
+    </div>
+    <div class="metric-row">
+      <span class="metric-row__icon metric-row__icon--success">{% include "includes/icon.html" with name="clipboard" %}</span>
+      <div class="metric-row__text">
+        <p class="metric-row__label">Present today</p>
+        <p class="metric-row__value">{{ present_today }}</p>
+      </div>
+    </div>
+    <div class="metric-row">
+      <span class="metric-row__icon metric-row__icon--neutral">{% include "includes/icon.html" with name="users" %}</span>
+      <div class="metric-row__text">
+        <p class="metric-row__label">Ready for recognition</p>
+        <p class="metric-row__value">{{ ready_students }}<span class="metric-row__of"> / {{ active_students }}</span></p>
+      </div>
+    </div>
+  </section>
+</div>
 
 <div class="grid-2">
   <div class="stack">
-    <section aria-labelledby="live-now">
-      <h2 id="live-now" class="sr-only">Active sessions</h2>
-      {% if active_sessions %}
-      <div class="stack">
-        {% for s in active_sessions %}
-        <article class="live-card">
-          <div>
-            {% include "includes/status_badge.html" with status=s.status %}
-            <h3 class="live-card__title">{{ s.course_class.name }}</h3>
-            <div class="row__meta">
-              <span>{% include "includes/icon.html" with name="clock" %}{% if s.started_at %}Started {{ s.started_at|time:"H:i" }}{% else %}{{ s.date|date:"j M" }}{% endif %}</span>
-              <span>{% include "includes/icon.html" with name="users" %}{{ s.present_count }} present</span>
-              <span>{% include "includes/icon.html" with name="user" %}{{ s.teacher|person:"No teacher" }}</span>
-            </div>
-          </div>
-          <a class="btn" href="{% url 'dashboard:live' s.pk %}">{% include "includes/icon.html" with name="radio" %}Open live view</a>
-        </article>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="card">
-        <div class="empty empty--compact">
-          <span class="empty__icon">{% include "includes/icon.html" with name="radio" %}</span>
-          <h3 class="empty__title">No active sessions</h3>
-          <p class="empty__body">Start a scheduled session or create a new one to begin recording attendance.</p>
-          <a class="btn" href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="plus" %}New session</a>
-        </div>
-      </div>
-      {% endif %}
-    </section>
-
-    <section class="card card--flush" aria-labelledby="upcoming">
-      <div class="card__head">
-        <h2 id="upcoming" class="card__title">Upcoming sessions</h2>
+    <section class="card card--flush" aria-labelledby="sessions-list">
+      <div class="subhead" id="sessions-list">
+        <span>Upcoming</span>
         <a href="{% url 'dashboard:sessions' %}?status=scheduled">View all</a>
       </div>
       {% if scheduled_sessions %}
@@ -94,17 +109,11 @@
         {% endfor %}
       </ul>
       {% else %}
-      <div class="empty empty--compact">
-        <span class="empty__icon">{% include "includes/icon.html" with name="calendar" %}</span>
-        <h3 class="empty__title">No upcoming sessions</h3>
-        <p class="empty__body">Sessions you schedule and have not started yet will appear here.</p>
-      </div>
+      <p class="empty-inline">{% include "includes/icon.html" with name="calendar" class="icon--sm" %}No upcoming sessions — scheduled sessions you haven't started yet will appear here.</p>
       {% endif %}
-    </section>
 
-    <section class="card card--flush" aria-labelledby="recent">
-      <div class="card__head">
-        <h2 id="recent" class="card__title">Recently completed</h2>
+      <div class="subhead">
+        <span>Recently completed</span>
         <a href="{% url 'dashboard:sessions' %}?status=closed">View all</a>
       </div>
       {% if recent_sessions %}
@@ -125,11 +134,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <div class="empty empty--compact">
-        <span class="empty__icon">{% include "includes/icon.html" with name="clipboard" %}</span>
-        <h3 class="empty__title">No completed sessions yet</h3>
-        <p class="empty__body">Your completed classroom sessions will appear here.</p>
-      </div>
+      <p class="empty-inline">{% include "includes/icon.html" with name="clipboard" class="icon--sm" %}No completed sessions yet — closed sessions will appear here.</p>
       {% endif %}
     </section>
   </div>
@@ -137,41 +142,53 @@
   <div class="stack">
     <section class="card card--flush" aria-labelledby="quick">
       <div class="card__head"><h2 id="quick" class="card__title">Quick actions</h2></div>
-      <ul class="action-list">
-        <li><a href="{% url 'classes:session_create' %}">{% include "includes/icon.html" with name="plus" %}New session{% include "includes/icon.html" with name="chevron-right" %}</a></li>
-        <li><a href="{% url 'dashboard:sessions' %}">{% include "includes/icon.html" with name="calendar" %}Browse sessions{% include "includes/icon.html" with name="chevron-right" %}</a></li>
-        <li><a href="{% url 'classes:list' %}">{% include "includes/icon.html" with name="book" %}Classes ({{ class_count }}){% include "includes/icon.html" with name="chevron-right" %}</a></li>
+      <div class="action-grid">
+        <a class="action-tile" href="{% url 'classes:session_create' %}">
+          <span class="action-tile__icon">{% include "includes/icon.html" with name="plus" %}</span>
+          <span class="action-tile__label">New session</span>
+        </a>
+        <a class="action-tile" href="{% url 'dashboard:sessions' %}">
+          <span class="action-tile__icon">{% include "includes/icon.html" with name="calendar" %}</span>
+          <span class="action-tile__label">Browse sessions</span>
+        </a>
+        <a class="action-tile" href="{% url 'classes:list' %}">
+          <span class="action-tile__icon">{% include "includes/icon.html" with name="book" %}</span>
+          <span class="action-tile__label">Classes ({{ class_count }})</span>
+        </a>
         {% if is_app_admin %}
-        <li><a href="{% url 'students:create' %}">{% include "includes/icon.html" with name="user-plus" %}Enrol a student{% include "includes/icon.html" with name="chevron-right" %}</a></li>
+        <a class="action-tile" href="{% url 'students:create' %}">
+          <span class="action-tile__icon">{% include "includes/icon.html" with name="user-plus" %}</span>
+          <span class="action-tile__label">Enrol a student</span>
+        </a>
         {% else %}
-        <li><a href="{% url 'students:list' %}">{% include "includes/icon.html" with name="users" %}View students{% include "includes/icon.html" with name="chevron-right" %}</a></li>
+        <a class="action-tile" href="{% url 'students:list' %}">
+          <span class="action-tile__icon">{% include "includes/icon.html" with name="users" %}</span>
+          <span class="action-tile__label">View students</span>
+        </a>
         {% endif %}
-      </ul>
+      </div>
     </section>
 
     <section class="card card--flush" aria-labelledby="activity">
       <div class="card__head"><h2 id="activity" class="card__title">Recent attendance</h2></div>
       {% if recent_attendance %}
-      <ul class="rows">
+      <ul class="feed">
         {% for r in recent_attendance %}
-        <li class="row">
-          <div class="row__main">
-            <p class="row__title">{{ r.student.full_name }}</p>
-            <div class="row__meta"><span>{{ r.session.course_class.name }}</span></div>
+        <li class="feed-row">
+          <span class="avatar">{{ r.student.full_name|slice:":1"|upper }}</span>
+          <div class="feed-row__text">
+            <p class="feed-row__name">{{ r.student.full_name }}</p>
+            <p class="feed-row__sub">{{ r.session.course_class.name }}</p>
           </div>
-          <div class="row__side row__side--stack">
+          <div class="feed-row__side">
             <span class="badge {% if r.status == 'present' %}badge--ok{% elif r.status == 'excused' %}badge--warn{% else %}badge--plain{% endif %}">{{ r.get_status_display }}</span>
-            <span class="fine num">{{ r.marked_at|date:"j M, H:i" }}</span>
+            <span class="feed-row__time num">{{ r.marked_at|date:"j M, H:i" }}</span>
           </div>
         </li>
         {% endfor %}
       </ul>
       {% else %}
-      <div class="empty empty--compact">
-        <span class="empty__icon">{% include "includes/icon.html" with name="users" %}</span>
-        <h3 class="empty__title">No attendance recorded</h3>
-        <p class="empty__body">Marks appear here as students are recognised or corrected by hand.</p>
-      </div>
+      <p class="empty-inline">{% include "includes/icon.html" with name="users" class="icon--sm" %}No attendance recorded yet — marks appear as students are recognised or corrected by hand.</p>
       {% endif %}
     </section>
   </div>
